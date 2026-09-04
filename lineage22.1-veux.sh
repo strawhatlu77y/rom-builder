@@ -27,7 +27,7 @@ EOF
 # Sync all repositories
 /opt/crave/resync.sh
 
-# Remove the device tree's vendorsetup.sh
+# Remove the device tree's vendorsetup.sh (prevents duplicate clones)
 rm -f device/xiaomi/veux/vendorsetup.sh
 
 # Set environment variables
@@ -44,7 +44,7 @@ lunch lineage_veux-userdebug
 # Start the build
 mka bacon
 
-# Copy images
+# Copy images (optional)
 mkdir -p imgs_output
 cp out/target/product/veux/boot.img imgs_output/ 2>/dev/null || true
 cp out/target/product/veux/dtbo.img imgs_output/ 2>/dev/null || true
