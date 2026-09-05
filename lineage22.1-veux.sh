@@ -14,7 +14,8 @@ cat > .repo/local_manifests/veux.xml << "EOF"
 <manifest>
   <project name="Amrito-Projects/device_xiaomi_veux" path="device/xiaomi/veux" revision="15" depth="1" />
   <project name="Amrito-Projects/vendor_xiaomi_veux-new" path="vendor/xiaomi/veux" revision="15" depth="1" />
-  <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" revision="15" depth="1" />
+  <!-- Kernel: use default branch (no revision) -->
+  <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" depth="1" />
   <project name="LineageOS/android_hardware_xiaomi" path="hardware/xiaomi" revision="lineage-22.2" depth="1" />
   <project name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi" path="hardware/qcom-caf/sm8350/audio/configs/holi" revision="14" depth="1" />
   <project name="Positron-B/vendor_xiaomi_miuicamera-veux" path="vendor/xiaomi/miuicamera-veux" revision="main" depth="1" />
