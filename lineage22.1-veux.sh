@@ -14,8 +14,8 @@ cat > .repo/local_manifests/veux.xml << "EOF"
 <manifest>
   <project name="Amrito-Projects/device_xiaomi_veux" path="device/xiaomi/veux" revision="15" depth="1" />
   <project name="Amrito-Projects/vendor_xiaomi_veux-new" path="vendor/xiaomi/veux" revision="15" depth="1" />
-  <!-- Kernel: use default branch (no revision) -->
-  <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" depth="1" />
+  <!-- Kernel repository uses main explicitly -->
+  <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" revision="main" depth="1" />
   <project name="LineageOS/android_hardware_xiaomi" path="hardware/xiaomi" revision="lineage-22.2" depth="1" />
   <project name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi" path="hardware/qcom-caf/sm8350/audio/configs/holi" revision="14" depth="1" />
   <project name="Positron-B/vendor_xiaomi_miuicamera-veux" path="vendor/xiaomi/miuicamera-veux" revision="main" depth="1" />
@@ -25,27 +25,27 @@ cat > .repo/local_manifests/veux.xml << "EOF"
 </manifest>
 EOF
 
-# Sync all repositories
 /opt/crave/resync.sh
 
-# Remove the device tree's vendorsetup.sh (prevents duplicate clones)
+# Preflight: verify kernel synced correctly
+echo "Resolved kernel revision:"
+git -C kernel/xiaomi/veux rev-parse HEAD
+test -n "$(find kernel/xiaomi/veux -type f -name "veux_defconfig" -print -quit)" || {
+  echo "ERROR: veux_defconfig was not found — kernel sync failed"
+  exit 1
+}
+echo "veux_defconfig found — kernel OK"
+
 rm -f device/xiaomi/veux/vendorsetup.sh
 
-# Set environment variables
 export BUILD_USERNAME=crave
 export BUILD_HOSTNAME=foss
 export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
 
-# Set up build environment
 source build/envsetup.sh
-
-# Lunch the device
 lunch lineage_veux-userdebug
-
-# Start the build
 mka bacon
 
-# Copy images (optional)
 mkdir -p imgs_output
 cp out/target/product/veux/boot.img imgs_output/ 2>/dev/null || true
 cp out/target/product/veux/dtbo.img imgs_output/ 2>/dev/null || true
