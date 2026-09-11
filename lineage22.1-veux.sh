@@ -43,7 +43,26 @@ export BUILD_HOSTNAME=foss
 export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
 
 source build/envsetup.sh
-lunch lineage_veux-userdebug
+
+# ---- Auto-detect the correct lunch combo instead of hardcoding it ----
+# Android 15+ trees require <product>-<release>-<variant> (3 parts).
+# The release token (ap4a, bp1a, etc.) varies by tree/snapshot, so we
+# read it from COMMON_LUNCH_CHOICES, which envsetup.sh populates by
+# scanning every device/*/vendorsetup.sh in the synced tree.
+echo "Available lunch combos for veux:"
+printf '%s\n' "${COMMON_LUNCH_CHOICES[@]}" | grep veux || true
+
+COMBO="$(printf '%s\n' "${COMMON_LUNCH_CHOICES[@]}" | grep '^lineage_veux-.*-userdebug$' | head -n1 || true)"
+
+if [ -z "$COMBO" ]; then
+  echo "ERROR: no matching lunch combo found for veux userdebug. Full list above."
+  exit 1
+fi
+
+echo "Using lunch combo: $COMBO"
+lunch "$COMBO"
+# ------------------------------------------------------------------
+
 mka bacon
 
 mkdir -p imgs_output
