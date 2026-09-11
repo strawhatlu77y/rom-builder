@@ -43,26 +43,7 @@ export BUILD_HOSTNAME=foss
 export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
 
 source build/envsetup.sh
-
-# ---- Auto-detect the correct lunch combo instead of hardcoding it ----
-# Android 15+ trees require <product>-<release>-<variant> (3 parts).
-# The release token (ap4a, bp1a, etc.) varies by tree/snapshot, so we
-# read it from COMMON_LUNCH_CHOICES, which envsetup.sh populates by
-# scanning every device/*/vendorsetup.sh in the synced tree.
-echo "Available lunch combos for veux:"
-printf '%s\n' "${COMMON_LUNCH_CHOICES[@]}" | grep veux || true
-
-COMBO="$(printf '%s\n' "${COMMON_LUNCH_CHOICES[@]}" | grep '^lineage_veux-.*-userdebug$' | head -n1 || true)"
-
-if [ -z "$COMBO" ]; then
-  echo "ERROR: no matching lunch combo found for veux userdebug. Full list above."
-  exit 1
-fi
-
-echo "Using lunch combo: $COMBO"
-lunch "$COMBO"
-# ------------------------------------------------------------------
-
+breakfast veux
 mka bacon
 
 mkdir -p imgs_output
@@ -75,3 +56,6 @@ echo "====================================="
 echo "Build finished. Flashable ZIP:"
 find out/target/product/veux -maxdepth 1 -type f -name "lineage-*.zip" 2>/dev/null || echo "No ZIP found"
 ls -lh out/target/product/veux/*.zip 2>/dev/null
+
+as 
+crave run --no-patch -- "curl -v https://raw.githubusercontent.com/strawhatlu77y/rom-builder/main/lineage22.1-veux.sh | bash"
