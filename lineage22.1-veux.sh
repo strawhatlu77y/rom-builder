@@ -38,6 +38,10 @@ echo "veux_defconfig found — kernel OK"
 
 rm -f device/xiaomi/veux/vendorsetup.sh
 
+# Fix bootctrl for Lineage 22.1 (revert AIDL to standard HIDL)
+sed -i 's/android.hardware.boot-service.qti\.recovery/android.hardware.boot@1.2-impl-qti.recovery/g' device/xiaomi/veux/device.mk
+sed -i 's/android.hardware.boot-service.qti/android.hardware.boot@1.2-impl-qti \\\n    android.hardware.boot@1.2-service/g' device/xiaomi/veux/device.mk
+
 export BUILD_USERNAME=crave
 export BUILD_HOSTNAME=foss
 export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
