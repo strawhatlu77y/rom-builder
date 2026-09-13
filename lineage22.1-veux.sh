@@ -59,6 +59,3 @@ echo "====================================="
 echo "Build finished. Flashable ZIP:"
 find out/target/product/veux -maxdepth 1 -type f -name "lineage-*.zip" 2>/dev/null || echo "No ZIP found"
 ls -lh out/target/product/veux/*.zip 2>/dev/null
-
-as 
-crave run --no-patch -- "curl -v https://raw.githubusercontent.com/strawhatlu77y/rom-builder/main/lineage22.1-veux.sh | bash"
