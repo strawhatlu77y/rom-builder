@@ -16,6 +16,7 @@ cat > .repo/local_manifests/veux.xml << "EOF"
   <project name="Amrito-Projects/vendor_xiaomi_veux-new" path="vendor/xiaomi/veux" revision="15" depth="1" />
   <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" revision="main" depth="1" />
   <project name="LineageOS/android_hardware_xiaomi" path="hardware/xiaomi" revision="lineage-22.1" depth="1" />
+  <project name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi" path="hardware/qcom-caf/sm8350/audio/configs/holi" revision="14" depth="1" />
   <project name="Positron-B/vendor_xiaomi_miuicamera-veux" path="vendor/xiaomi/miuicamera-veux" revision="main" depth="1" />
   <project name="Positron-B/vendor_xiaomi_miuicamera" path="vendor/xiaomi/miuicamera" revision="main" depth="1" />
   <project name="userariii/vendor_sony_dolby" path="vendor/sony/dolby" revision="v1.0_sonyDAXUI" depth="1" />
@@ -47,6 +48,14 @@ BOARD_OPENSOURCE_DIR :=' device/xiaomi/veux/BoardConfig.mk
 # Debug: show resolved audio path
 sed -i '/endif # BOARD_OPENSOURCE_DIR/a $(warning AUDIO_DEBUG: BOARD_OPENSOURCE_DIR=[$(BOARD_OPENSOURCE_DIR)] PRIMARY_HAL_PATH=[$(PRIMARY_HAL_PATH)])' \
     hardware/qcom-caf/sm8350/audio/hal/audio_extn/Android.mk
+
+# Verify required Holi audio config exists
+test -f hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt || {
+  echo "ERROR: audio_tuning_mixer.txt is missing"
+  exit 1
+}
+
+echo "Holi audio configs OK"
 
 export BUILD_USERNAME=crave
 export BUILD_HOSTNAME=foss
