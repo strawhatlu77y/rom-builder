@@ -35,10 +35,33 @@ test -n "$(find kernel/xiaomi/veux -type f -name "veux_defconfig" -print -quit)"
 }
 echo "veux_defconfig found — kernel OK"
 
+# Verify VEUX device tree exists
+test -d device/xiaomi/veux || {
+  echo "ERROR: device/xiaomi/veux was not found"
+  exit 1
+}
+
+# Verify VEUX vendor tree exists
+test -d vendor/xiaomi/veux || {
+  echo "ERROR: vendor/xiaomi/veux was not found"
+  exit 1
+}
+
 rm -f device/xiaomi/veux/vendorsetup.sh
 
-# Remove missing bootctrl packages from device tree
+# Remove old/missing bootctrl declaration
 sed -i '/android.hardware.boot/d' device/xiaomi/veux/device.mk
+
+# Add required QTI BootControl services
+cat >> device/xiaomi/veux/device.mk << 'EOF'
+
+# Boot control
+PRODUCT_PACKAGES += \
+    android.hardware.boot-service.qti \
+    android.hardware.boot-service.qti.recovery
+
+$(call soong_config_set,QTI_GPT_UTILS,USE_BSG_FRAMEWORK,false)
+EOF
 
 # Fix CAF audio HAL path
 sed -i '1a\
@@ -56,6 +79,9 @@ test -f hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt || {
 }
 
 echo "Holi audio configs OK"
+
+# Verify BootControl packages are present in device tree
+grep -nA4 "android.hardware.boot-service.qti" device/xiaomi/veux/device.mk
 
 export BUILD_USERNAME=crave
 export BUILD_HOSTNAME=foss
