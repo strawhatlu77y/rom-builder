@@ -3,18 +3,31 @@ set -u
 
 # ============================================================
 # LineageOS 23.2 - VEUX / PEUX
-# COMPLETE SOURCE + VENDOR + PREFLIGHT
+# COMPLETE PRE-BUILD PREFLIGHT
 # ============================================================
 #
-# REQUIRED INPUT FILES:
+# NO ROM COMPILATION.
+# NO mka bacon.
 #
-#   veux_eea_global_images_OS1.0.13.0.TKCEUXM*.tgz
-#   sunstone_eea_global_images_OS2.0.9.0.UMQEUXM*.tgz
+# This script:
+#   1. Initializes LineageOS 23.2
+#   2. Creates the verified VEUX manifest
+#   3. Syncs the source
+#   4. Validates source repositories/files
+#   5. Validates VEUX/common proprietary lists
+#   6. Validates extraction tooling
+#   7. Validates vendor trees
+#   8. Validates BootControl
+#   9. Validates fastbootd / Virtual A/B / dynamic partitions
+#  10. Runs breakfast veux only after source/vendor checks
+#  11. Validates the RESOLVED product configuration
+#  12. Stops without compiling
 #
-# The firmware archives must already be available in the
-# Crave working directory.
-#
-# THIS SCRIPT DOES NOT RUN mka bacon.
+# IMPORTANT:
+# Proprietary blobs are NOT downloaded magically by repo sync.
+# vendor/xiaomi/veux and vendor/xiaomi/sm6375-common must already
+# be populated by the proper extraction workflow before the
+# product-level stage can pass.
 #
 # ============================================================
 
@@ -33,22 +46,11 @@ warn() {
     echo "[WARN] $1"
 }
 
-die() {
-    echo
-    echo "=================================================="
-    echo " FATAL ERROR"
-    echo "=================================================="
-    echo
-    echo "$1"
-    echo
-    exit 1
-}
-
 require_file() {
     if [ -f "$1" ]; then
         pass "File exists: $1"
     else
-        fail "Missing: $1"
+        fail "Missing file: $1"
     fi
 }
 
@@ -56,119 +58,17 @@ require_dir() {
     if [ -d "$1" ]; then
         pass "Directory exists: $1"
     else
-        fail "Missing: $1"
+        fail "Missing directory: $1"
     fi
 }
 
 # ============================================================
-# 1. FIND FIRMWARE
+# 1. CLEAN LOCAL MANIFESTS
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [1] Locating firmware archives"
-echo "=================================================="
-echo
-
-VEUX_FW="$(find . -maxdepth 2 -type f \
-    -iname 'veux_eea_global_images_OS1.0.13.0.TKCEUXM*.tgz' \
-    -print -quit)"
-
-SUNSTONE_FW="$(find . -maxdepth 2 -type f \
-    -iname 'sunstone_eea_global_images_OS2.0.9.0.UMQEUXM*.tgz' \
-    -print -quit)"
-
-if [ -z "$VEUX_FW" ]; then
-    die "VEUX firmware archive OS1.0.13.0.TKCEUXM was not found."
-fi
-
-if [ -z "$SUNSTONE_FW" ]; then
-    die "SUNSTONE firmware archive OS2.0.9.0.UMQEUXM was not found."
-fi
-
-echo "VEUX firmware:"
-echo "  $VEUX_FW"
-echo
-echo "SUNSTONE firmware:"
-echo "  $SUNSTONE_FW"
-echo
-
-# ============================================================
-# 2. VERIFY FIRMWARE MD5
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [2] Verifying firmware checksums"
-echo "=================================================="
-echo
-
-VEUX_MD5_EXPECTED="e887aa14ef7d196145cb9097a2b3de16"
-SUNSTONE_MD5_EXPECTED="3cef4451a9b6f194fcc9e44c6f3d3f88"
-
-VEUX_MD5_ACTUAL="$(md5sum "$VEUX_FW" | awk '{print $1}')"
-SUNSTONE_MD5_ACTUAL="$(md5sum "$SUNSTONE_FW" | awk '{print $1}')"
-
-echo "VEUX expected : $VEUX_MD5_EXPECTED"
-echo "VEUX actual   : $VEUX_MD5_ACTUAL"
-echo
-
-if [ "$VEUX_MD5_ACTUAL" = "$VEUX_MD5_EXPECTED" ]; then
-    pass "VEUX firmware MD5 matches"
-else
-    die "VEUX firmware MD5 mismatch."
-fi
-
-echo "SUNSTONE expected : $SUNSTONE_MD5_EXPECTED"
-echo "SUNSTONE actual   : $SUNSTONE_MD5_ACTUAL"
-echo
-
-if [ "$SUNSTONE_MD5_ACTUAL" = "$SUNSTONE_MD5_EXPECTED" ]; then
-    pass "SUNSTONE firmware MD5 matches"
-else
-    die "SUNSTONE firmware MD5 mismatch."
-fi
-
-# These are the published package versions we are targeting.
-# VEUX package: OS1.0.13.0.TKCEUXM
-# SUNSTONE package: OS2.0.9.0.UMQEUXM
-#
-# The current proprietary lists identify these as their blob
-# sources.
-
-# ============================================================
-# 3. CHECK TOOLS
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [3] Checking host tools"
-echo "=================================================="
-echo
-
-for TOOL in git repo python3 tar gzip md5sum awk sed grep find; do
-    if command -v "$TOOL" >/dev/null 2>&1; then
-        pass "$TOOL available"
-    else
-        die "$TOOL is not available."
-    fi
-done
-
-# lpunpack is required if super contains logical partitions.
-# We do not silently continue without it.
-if command -v lpunpack >/dev/null 2>&1; then
-    pass "lpunpack available"
-else
-    warn "lpunpack not found. Firmware extraction may require it."
-fi
-
-# ============================================================
-# 4. CLEAN LOCAL MANIFEST
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [4] Cleaning local manifests"
+echo " [1] CLEANING LOCAL MANIFESTS"
 echo "=================================================="
 echo
 
@@ -178,12 +78,12 @@ mkdir -p .repo/local_manifests
 pass "Local manifests cleaned"
 
 # ============================================================
-# 5. INITIALIZE LINEAGEOS 23.2
+# 2. INITIALIZE LINEAGEOS 23.2
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [5] Initializing LineageOS 23.2"
+echo " [2] INITIALIZING LINEAGEOS 23.2"
 echo "=================================================="
 echo
 
@@ -196,12 +96,12 @@ repo init \
 pass "LineageOS 23.2 initialized"
 
 # ============================================================
-# 6. CREATE LOCAL MANIFEST
+# 3. CREATE LOCAL MANIFEST
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [6] Creating VEUX 23.2 manifest"
+echo " [3] CREATING VEUX 23.2 MANIFEST"
 echo "=================================================="
 echo
 
@@ -236,15 +136,15 @@ cat > .repo/local_manifests/veux.xml << 'EOF'
 </manifest>
 EOF
 
-pass "23.2 VEUX manifest created"
+pass "VEUX manifest created"
 
 # ============================================================
-# 7. SYNC
+# 4. SOURCE SYNC
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [7] Syncing source"
+echo " [4] SYNCING SOURCE"
 echo "=================================================="
 echo
 
@@ -253,12 +153,12 @@ echo
 pass "Source sync completed"
 
 # ============================================================
-# 8. SOURCE TREE
+# 5. SOURCE TREE
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [8] Source tree validation"
+echo " [5] SOURCE TREE VALIDATION"
 echo "=================================================="
 echo
 
@@ -291,34 +191,46 @@ do
 done
 
 # ============================================================
-# 9. DEVICE COMMON INHERITANCE
+# 6. VERIFY MANIFEST CONTENT
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [9] VEUX -> SM6375 common"
+echo " [6] MANIFEST VALIDATION"
 echo "=================================================="
 echo
 
-if grep -q \
-    'device/xiaomi/sm6375-common/common.mk' \
-    device/xiaomi/veux/device.mk; then
+grep -q \
+    "xiaomi-sm6375-devs/android_device_xiaomi_veux" \
+    .repo/local_manifests/veux.xml \
+    && pass "VEUX repository correct" \
+    || fail "VEUX repository missing"
 
-    pass "VEUX inherits SM6375 common"
+grep -q \
+    "xiaomi-sm6375-devs/android_device_xiaomi_sm6375-common" \
+    .repo/local_manifests/veux.xml \
+    && pass "SM6375 common repository correct" \
+    || fail "SM6375 common repository missing"
 
-else
+grep -q \
+    "xiaomi-sm6375-devs/android_kernel_xiaomi_sm6375" \
+    .repo/local_manifests/veux.xml \
+    && pass "SM6375 kernel repository correct" \
+    || fail "SM6375 kernel repository missing"
 
-    fail "VEUX does not inherit SM6375 common"
-
-fi
+grep -q \
+    "LineageOS/android_hardware_xiaomi" \
+    .repo/local_manifests/veux.xml \
+    && pass "Xiaomi hardware repository correct" \
+    || fail "Xiaomi hardware repository missing"
 
 # ============================================================
-# 10. RESOLVED COMMITS
+# 7. RESOLVED COMMITS
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [10] Resolved repository commits"
+echo " [7] RESOLVED COMMITS"
 echo "=================================================="
 echo
 
@@ -326,7 +238,7 @@ echo "VEUX:"
 git -C device/xiaomi/veux rev-parse HEAD
 
 echo
-echo "COMMON:"
+echo "SM6375 COMMON:"
 git -C device/xiaomi/sm6375-common rev-parse HEAD
 
 echo
@@ -337,13 +249,33 @@ echo
 echo "HARDWARE/XIAOMI:"
 git -C hardware/xiaomi rev-parse HEAD
 
+pass "Repository commits resolved"
+
 # ============================================================
-# 11. PROPRIETARY LIST VALIDATION
+# 8. VEUX -> COMMON INHERITANCE
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [11] Proprietary lists"
+echo " [8] VEUX -> COMMON INHERITANCE"
+echo "=================================================="
+echo
+
+if grep -q \
+    "device/xiaomi/sm6375-common/common.mk" \
+    device/xiaomi/veux/device.mk; then
+    pass "VEUX inherits SM6375 common"
+else
+    fail "VEUX does not inherit SM6375 common"
+fi
+
+# ============================================================
+# 9. PROPRIETARY LISTS
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [9] PROPRIETARY LIST VALIDATION"
 echo "=================================================="
 echo
 
@@ -366,43 +298,52 @@ else
     fail "COMMON proprietary list unexpectedly small"
 fi
 
-grep -q "OS1.0.13.0.TKCEUXM" \
+grep -q \
+    "OS1.0.13.0.TKCEUXM" \
     device/xiaomi/veux/proprietary-files.txt \
-    && pass "VEUX list expects OS1.0.13.0.TKCEUXM" \
-    || fail "VEUX expected firmware source missing"
+    && pass "VEUX source is OS1.0.13.0.TKCEUXM" \
+    || fail "VEUX firmware source mismatch/missing"
 
-grep -q "OS2.0.9.0.UMQEUXM" \
+grep -q \
+    "OS2.0.9.0.UMQEUXM" \
     device/xiaomi/sm6375-common/proprietary-files.txt \
-    && pass "COMMON list expects OS2.0.9.0.UMQEUXM" \
-    || fail "COMMON expected firmware source missing"
+    && pass "COMMON source is OS2.0.9.0.UMQEUXM" \
+    || fail "COMMON firmware source mismatch/missing"
 
 # ============================================================
-# 12. EXTRACTION TOOL SYNTAX
+# 10. EXTRACTION SCRIPT SYNTAX
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [12] Extraction tooling"
+echo " [10] EXTRACTION TOOLING"
 echo "=================================================="
 echo
+
+if python3 --version >/dev/null 2>&1; then
+    python3 --version
+    pass "Python 3 available"
+else
+    fail "Python 3 unavailable"
+fi
 
 python3 -m py_compile \
-    device/xiaomi/veux/extract-files.py
-
-pass "VEUX extractor syntax OK"
+    device/xiaomi/veux/extract-files.py \
+    && pass "VEUX extract-files.py syntax OK" \
+    || fail "VEUX extract-files.py syntax failed"
 
 python3 -m py_compile \
-    device/xiaomi/sm6375-common/extract-files.py
-
-pass "COMMON extractor syntax OK"
+    device/xiaomi/sm6375-common/extract-files.py \
+    && pass "COMMON extract-files.py syntax OK" \
+    || fail "COMMON extract-files.py syntax failed"
 
 # ============================================================
-# 13. EXTRACTION NAMESPACES
+# 11. EXTRACTION NAMESPACES
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [13] Extraction namespaces"
+echo " [11] EXTRACTION NAMESPACES"
 echo "=================================================="
 echo
 
@@ -423,189 +364,318 @@ do
 done
 
 # ============================================================
-# 14. PRE-EXTRACTION GATE
+# 12. VENDOR TREES
 # ============================================================
 
 echo
 echo "=================================================="
-echo "        PRE-EXTRACTION GATE"
+echo " [12] VENDOR TREE VALIDATION"
 echo "=================================================="
 echo
 
-if [ "$FAIL" -ne 0 ]; then
-    die "Source validation failed. Proprietary extraction will NOT be attempted."
+require_dir vendor/xiaomi/veux
+require_dir vendor/xiaomi/sm6375-common
+
+require_file vendor/xiaomi/veux/veux-vendor.mk
+require_file vendor/xiaomi/sm6375-common/sm6375-common-vendor.mk
+
+# ============================================================
+# 13. VENDOR CONTENT
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [13] VENDOR CONTENT VALIDATION"
+echo "=================================================="
+echo
+
+VEUX_VENDOR_FILES="$(find vendor/xiaomi/veux -type f 2>/dev/null | wc -l)"
+COMMON_VENDOR_FILES="$(find vendor/xiaomi/sm6375-common -type f 2>/dev/null | wc -l)"
+
+echo "VEUX vendor files   : $VEUX_VENDOR_FILES"
+echo "COMMON vendor files : $COMMON_VENDOR_FILES"
+echo
+
+if [ "$VEUX_VENDOR_FILES" -gt 50 ]; then
+    pass "VEUX vendor tree populated"
+else
+    fail "VEUX vendor tree appears incomplete"
 fi
 
-echo "[PASS] Source tree ready for proprietary extraction."
-echo
+if [ "$COMMON_VENDOR_FILES" -gt 50 ]; then
+    pass "COMMON vendor tree populated"
+else
+    fail "COMMON vendor tree appears incomplete"
+fi
 
 # ============================================================
-# 15. PREPARE FIRMWARE WORK AREAS
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [15] Preparing firmware extraction areas"
-echo "=================================================="
-echo
-
-rm -rf firmware_source
-mkdir -p firmware_source/veux
-mkdir -p firmware_source/sunstone
-
-pass "Firmware work areas prepared"
-
-# ============================================================
-# 16. EXTRACT VEUX FIRMWARE ARCHIVE
+# 14. VERIFY VENDOR INHERITANCE
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [16] Extracting VEUX firmware archive"
+echo " [14] VENDOR INHERITANCE"
 echo "=================================================="
 echo
 
-tar -xzf "$VEUX_FW" \
-    -C firmware_source/veux
+grep -q \
+    "vendor/xiaomi/veux/veux-vendor.mk" \
+    device/xiaomi/veux/device.mk \
+    && pass "VEUX vendor makefile inherited" \
+    || fail "VEUX vendor makefile inheritance missing"
 
-pass "VEUX firmware archive extracted"
-
-# ============================================================
-# 17. EXTRACT SUNSTONE FIRMWARE ARCHIVE
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [17] Extracting SUNSTONE firmware archive"
-echo "=================================================="
-echo
-
-tar -xzf "$SUNSTONE_FW" \
-    -C firmware_source/sunstone
-
-pass "SUNSTONE firmware archive extracted"
+grep -q \
+    "vendor/xiaomi/sm6375-common/sm6375-common-vendor.mk" \
+    device/xiaomi/sm6375-common/common.mk \
+    && pass "COMMON vendor makefile inherited" \
+    || fail "COMMON vendor makefile inheritance missing"
 
 # ============================================================
-# 18. LOCATE FIRMWARE PARTITIONS
+# 15. BOOTCONTROL SOURCE
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [18] Locating firmware partition images"
+echo " [15] BOOTCONTROL SOURCE"
 echo "=================================================="
 echo
 
-echo "VEUX images:"
-find firmware_source/veux \
+require_dir hardware/qcom-caf/bootctrl
+
+require_file hardware/qcom-caf/bootctrl/aidl/Android.bp
+require_file hardware/qcom-caf/bootctrl/aidl/BootControl.cpp
+require_file hardware/qcom-caf/bootctrl/aidl/BootControl.h
+require_file hardware/qcom-caf/bootctrl/aidl/main.cpp
+
+grep -Rqs \
+    "android.hardware.boot-service.qti" \
+    hardware/qcom-caf/bootctrl \
+    && pass "Normal QTI BootControl definition found" \
+    || fail "Normal QTI BootControl definition missing"
+
+grep -Rqs \
+    "android.hardware.boot-service.qti.recovery" \
+    hardware/qcom-caf/bootctrl \
+    && pass "Recovery QTI BootControl definition found" \
+    || fail "Recovery QTI BootControl definition missing"
+
+# ============================================================
+# 16. BOOTCONTROL PRODUCT CONFIG
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [16] BOOTCONTROL PRODUCT CONFIG"
+echo "=================================================="
+echo
+
+grep -Rqs \
+    "android.hardware.boot-service.qti" \
+    device/xiaomi/sm6375-common \
+    device/xiaomi/veux \
+    && pass "Normal BootControl referenced by product config" \
+    || fail "Normal BootControl product reference missing"
+
+grep -Rqs \
+    "android.hardware.boot-service.qti.recovery" \
+    device/xiaomi/sm6375-common \
+    device/xiaomi/veux \
+    && pass "Recovery BootControl referenced by product config" \
+    || fail "Recovery BootControl product reference missing"
+
+# ============================================================
+# 17. BOOTCONTROL RC + VINTF
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [17] BOOTCONTROL RC/VINTF"
+echo "=================================================="
+echo
+
+RC_COUNT="$(find hardware/qcom-caf/bootctrl \
     -type f \
-    \( -name "vendor.img" \
-       -o -name "odm.img" \
-       -o -name "product.img" \
-       -o -name "system.img" \
-       -o -name "system_ext.img" \
-       -o -name "super.img" \) \
-    -print
+    -name "*.rc" | wc -l)"
 
-echo
-echo "SUNSTONE images:"
-find firmware_source/sunstone \
+VINTF_COUNT="$(find hardware/qcom-caf/bootctrl \
     -type f \
-    \( -name "vendor.img" \
-       -o -name "odm.img" \
-       -o -name "product.img" \
-       -o -name "system.img" \
-       -o -name "system_ext.img" \
-       -o -name "super.img" \) \
-    -print
+    \( -name "*manifest*.xml" -o -name "*vintf*.xml" \) | wc -l)"
 
-# ============================================================
-# 19. VERIFY COMMON VENDOR SOURCE EXISTS
-# ============================================================
-
-echo
-echo "=================================================="
-echo " [19] Firmware image availability"
-echo "=================================================="
+echo "BootControl RC files    : $RC_COUNT"
+echo "BootControl VINTF files: $VINTF_COUNT"
 echo
 
-VEUX_VENDOR_IMAGE="$(find firmware_source/veux -type f -name "vendor.img" -print -quit)"
-VEUX_ODM_IMAGE="$(find firmware_source/veux -type f -name "odm.img" -print -quit)"
-
-SUNSTONE_VENDOR_IMAGE="$(find firmware_source/sunstone -type f -name "vendor.img" -print -quit)"
-SUNSTONE_ODM_IMAGE="$(find firmware_source/sunstone -type f -name "odm.img" -print -quit)"
-
-if [ -n "$VEUX_VENDOR_IMAGE" ]; then
-    pass "VEUX vendor.img found"
+if [ "$RC_COUNT" -gt 0 ]; then
+    pass "BootControl RC files found"
 else
-    warn "VEUX vendor.img not directly present; may be inside super.img"
+    fail "BootControl RC files missing"
 fi
 
-if [ -n "$VEUX_ODM_IMAGE" ]; then
-    pass "VEUX odm.img found"
+if [ "$VINTF_COUNT" -gt 0 ]; then
+    pass "BootControl VINTF files found"
 else
-    warn "VEUX odm.img not directly present; may be inside super.img"
-fi
-
-if [ -n "$SUNSTONE_VENDOR_IMAGE" ]; then
-    pass "SUNSTONE vendor.img found"
-else
-    warn "SUNSTONE vendor.img not directly present; may be inside super.img"
-fi
-
-if [ -n "$SUNSTONE_ODM_IMAGE" ]; then
-    pass "SUNSTONE odm.img found"
-else
-    warn "SUNSTONE odm.img not directly present; may be inside super.img"
+    fail "BootControl VINTF files missing"
 fi
 
 # ============================================================
-# 20. EXISTING VENDOR TREE CHECK
+# 18. FASTBOOTD
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [20] Existing vendor tree"
+echo " [18] FASTBOOTD"
 echo "=================================================="
 echo
 
-if [ -d vendor/xiaomi/veux ]; then
-    pass "vendor/xiaomi/veux exists"
+grep -Rqs \
+    "fastbootd" \
+    device/xiaomi/sm6375-common \
+    device/xiaomi/veux \
+    && pass "fastbootd configuration found" \
+    || fail "fastbootd configuration missing"
+
+# ============================================================
+# 19. VIRTUAL A/B
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [19] VIRTUAL A/B"
+echo "=================================================="
+echo
+
+grep -Rqs \
+    "virtual_ab_ota/launch_with_vendor_ramdisk.mk" \
+    device/xiaomi/sm6375-common \
+    && pass "Virtual A/B configuration found" \
+    || fail "Virtual A/B configuration missing"
+
+# ============================================================
+# 20. DYNAMIC PARTITIONS
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [20] DYNAMIC PARTITIONS"
+echo "=================================================="
+echo
+
+grep -Rqs \
+    "PRODUCT_USE_DYNAMIC_PARTITIONS" \
+    device/xiaomi/sm6375-common \
+    && pass "Dynamic partition configuration found" \
+    || fail "Dynamic partition configuration missing"
+
+# ============================================================
+# 21. HOLI AUDIO
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [21] HOLI AUDIO"
+echo "=================================================="
+echo
+
+require_dir device/xiaomi/veux/audio
+
+if find device/xiaomi/veux/audio \
+    -type f \
+    -print -quit | grep -q .; then
+    pass "VEUX audio files found"
 else
-    warn "vendor/xiaomi/veux does not yet exist"
+    fail "VEUX audio directory is empty"
 fi
 
-if [ -d vendor/xiaomi/sm6375-common ]; then
-    pass "vendor/xiaomi/sm6375-common exists"
+grep -q \
+    "audio_amplifier.holi" \
+    device/xiaomi/veux/device.mk \
+    && pass "Holi amplifier configured" \
+    || fail "Holi amplifier configuration missing"
+
+if [ -f hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt ]; then
+    pass "Holi audio_tuning_mixer.txt exists"
 else
-    warn "vendor/xiaomi/sm6375-common does not yet exist"
+    fail "Holi audio_tuning_mixer.txt missing"
 fi
 
 # ============================================================
-# 21. EXTRACTION NOTICE
+# 22. RECOVERY / VENDOR BOOT
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [21] Proprietary extraction"
+echo " [22] RECOVERY / VENDOR_BOOT"
 echo "=================================================="
 echo
 
-echo "The current VEUX extractor is based on ExtractUtils"
-echo "and device_with_common('sm6375-common')."
-echo
-echo "The exact extraction source must provide filesystem"
-echo "paths corresponding to proprietary-files.txt."
-echo
-echo "Firmware archives have been unpacked above."
-echo
+grep -RqsE \
+    "BOARD_BOOT_HEADER_VERSION|BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE|BOARD_USES_RECOVERY_AS_BOOT|vendor_ramdisk" \
+    device/xiaomi/veux \
+    device/xiaomi/sm6375-common \
+    && pass "Recovery/vendor_boot configuration found" \
+    || warn "Recovery/vendor_boot configuration not fully identifiable by text scan"
 
 # ============================================================
-# 22. FINAL SOURCE/PREPARATION GATE
+# 23. OLD 22.1 CONTAMINATION
 # ============================================================
 
 echo
 echo "=================================================="
-echo "        FINAL PRE-BUILD GATE"
+echo " [23] OLD 22.1 CONTAMINATION"
+echo "=================================================="
+echo
+
+OLD_FOUND=0
+
+for P in \
+    "Amrito-Projects/device_xiaomi_veux" \
+    "Amrito-Projects/vendor_xiaomi_veux-new" \
+    "dereference23/kernel_xiaomi_sm6375" \
+    "Positron-B/vendor_xiaomi_miuicamera" \
+    "Positron-B/vendor_xiaomi_miuicamera-veux" \
+    "userariii/vendor_sony_dolby" \
+    "TogoFire/packages_apps_ViPER4AndroidFX" \
+    "hardware_qcom-caf_sm8350_audio_configs_holi"
+do
+
+    if grep -Rqs \
+        "$P" \
+        .repo/local_manifests \
+        device/xiaomi \
+        2>/dev/null; then
+
+        echo "[FAIL] Old 22.1 dependency found: $P"
+        OLD_FOUND=1
+
+    fi
+
+done
+
+if [ "$OLD_FOUND" -eq 0 ]; then
+    pass "No known 22.1 dependency contamination"
+else
+    FAIL=1
+fi
+
+# ============================================================
+# 24. REPO STATUS
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [24] REPO STATUS"
+echo "=================================================="
+echo
+
+repo status || true
+
+# ============================================================
+# 25. PRE-BREAKFAST HARD GATE
+# ============================================================
+
+echo
+echo "=================================================="
+echo "           PRE-BREAKFAST HARD GATE"
 echo "=================================================="
 echo
 
@@ -613,61 +683,27 @@ if [ "$FAIL" -ne 0 ]; then
 
     echo
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    echo " PRE-BUILD PREFLIGHT FAILED"
+    echo " PREFLIGHT FAILED"
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo
-    echo "NO breakfast."
-    echo "NO mka bacon."
+    echo "NO PRODUCT CONFIGURATION WILL BE RUN."
+    echo "NO BUILD WILL BE STARTED."
     echo
-    echo "Fix the failures above."
-    echo
-
     exit 1
 
 fi
 
 echo
-echo "[PASS] Source tree checks passed."
-echo "[PASS] Firmware archives verified."
-echo
-echo "However, vendor extraction is not automatically"
-echo "declared successful merely because the archives"
-echo "were unpacked."
-echo
-echo "The next operation must be the actual upstream"
-echo "extract-files.py against the prepared firmware"
-echo "filesystem source."
+echo "[PASS] All source-level hard checks passed."
 echo
 
 # ============================================================
-# 23. CHECK WHETHER VENDOR IS ALREADY COMPLETE
-# ============================================================
-
-if [ -f vendor/xiaomi/veux/veux-vendor.mk ] &&
-   [ -f vendor/xiaomi/sm6375-common/sm6375-common-vendor.mk ]; then
-
-    pass "Vendor makefiles already exist"
-
-else
-
-    warn "Vendor makefiles are not yet generated."
-    echo
-    echo "The source tree is NOT ready for compilation."
-    echo
-    echo "No build will be started."
-    echo
-
-    exit 1
-
-fi
-
-# ============================================================
-# 24. PRODUCT CONFIGURATION
+# 26. PRODUCT CONFIGURATION
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [24] Product configuration"
+echo " [26] PRODUCT CONFIGURATION"
 echo "=================================================="
 echo
 
@@ -676,42 +712,56 @@ export BUILD_HOSTNAME=foss
 
 source build/envsetup.sh
 
-breakfast veux
+echo
+echo "Running breakfast veux..."
+echo
+
+if ! breakfast veux; then
+    echo
+    echo "[FAIL] breakfast veux failed."
+    echo
+    exit 1
+fi
 
 echo
 echo "breakfast veux completed."
 echo
 
 # ============================================================
-# 25. RESOLVED PRODUCT
+# 27. RESOLVED TARGET VARIABLES
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [25] Resolved product"
+echo " [27] RESOLVED TARGET VARIABLES"
 echo "=================================================="
 echo
 
 TARGET_PRODUCT_RESOLVED="$(get_build_var TARGET_PRODUCT)"
 TARGET_DEVICE_RESOLVED="$(get_build_var TARGET_DEVICE)"
+TARGET_ARCH_RESOLVED="$(get_build_var TARGET_ARCH)"
 TARGET_KERNEL_SOURCE_RESOLVED="$(get_build_var TARGET_KERNEL_SOURCE)"
 TARGET_KERNEL_CONFIG_RESOLVED="$(get_build_var TARGET_KERNEL_CONFIG)"
+TARGET_BUILD_VARIANT_RESOLVED="$(get_build_var TARGET_BUILD_VARIANT)"
 
 echo "TARGET_PRODUCT       = $TARGET_PRODUCT_RESOLVED"
 echo "TARGET_DEVICE        = $TARGET_DEVICE_RESOLVED"
+echo "TARGET_ARCH          = $TARGET_ARCH_RESOLVED"
 echo "TARGET_KERNEL_SOURCE = $TARGET_KERNEL_SOURCE_RESOLVED"
 echo "TARGET_KERNEL_CONFIG = $TARGET_KERNEL_CONFIG_RESOLVED"
+echo "TARGET_BUILD_VARIANT = $TARGET_BUILD_VARIANT_RESOLVED"
+echo
 
 [ "$TARGET_PRODUCT_RESOLVED" = "lineage_veux" ] \
-    && pass "TARGET_PRODUCT is lineage_veux" \
-    || fail "Unexpected TARGET_PRODUCT"
+    && pass "TARGET_PRODUCT = lineage_veux" \
+    || fail "TARGET_PRODUCT != lineage_veux"
 
 [ "$TARGET_DEVICE_RESOLVED" = "veux" ] \
-    && pass "TARGET_DEVICE is veux" \
-    || fail "Unexpected TARGET_DEVICE"
+    && pass "TARGET_DEVICE = veux" \
+    || fail "TARGET_DEVICE != veux"
 
 [ "$TARGET_KERNEL_SOURCE_RESOLVED" = "kernel/xiaomi/sm6375" ] \
-    && pass "Kernel source is correct" \
+    && pass "TARGET_KERNEL_SOURCE = kernel/xiaomi/sm6375" \
     || fail "Unexpected kernel source"
 
 [ -n "$TARGET_KERNEL_CONFIG_RESOLVED" ] \
@@ -719,42 +769,70 @@ echo "TARGET_KERNEL_CONFIG = $TARGET_KERNEL_CONFIG_RESOLVED"
     || fail "Kernel config unresolved"
 
 # ============================================================
-# 26. RESOLVED PRODUCT PACKAGES
+# 28. RESOLVED BOOTCONTROL PACKAGES
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [26] Resolved PRODUCT_PACKAGES"
+echo " [28] RESOLVED BOOTCONTROL"
 echo "=================================================="
 echo
 
 PRODUCT_PACKAGES_RESOLVED="$(get_build_var PRODUCT_PACKAGES)"
 
-check_package() {
-    if printf '%s\n' "$PRODUCT_PACKAGES_RESOLVED" |
-        tr ' ' '\n' |
-        grep -Fxq "$1"; then
+if printf '%s\n' "$PRODUCT_PACKAGES_RESOLVED" |
+    tr ' ' '\n' |
+    grep -Fxq "android.hardware.boot-service.qti"; then
 
-        pass "$1 is in resolved PRODUCT_PACKAGES"
+    pass "Normal QTI BootControl resolved"
 
-    else
+else
 
-        fail "$1 is NOT in resolved PRODUCT_PACKAGES"
+    fail "Normal QTI BootControl NOT resolved"
 
-    fi
-}
+fi
 
-check_package "android.hardware.boot-service.qti"
-check_package "android.hardware.boot-service.qti.recovery"
-check_package "fastbootd"
+if printf '%s\n' "$PRODUCT_PACKAGES_RESOLVED" |
+    tr ' ' '\n' |
+    grep -Fxq "android.hardware.boot-service.qti.recovery"; then
+
+    pass "Recovery QTI BootControl resolved"
+
+else
+
+    fail "Recovery QTI BootControl NOT resolved"
+
+fi
 
 # ============================================================
-# 27. DYNAMIC PARTITION RESOLUTION
+# 29. RESOLVED FASTBOOTD
 # ============================================================
 
 echo
 echo "=================================================="
-echo " [27] Dynamic partition resolution"
+echo " [29] RESOLVED FASTBOOTD"
+echo "=================================================="
+echo
+
+if printf '%s\n' "$PRODUCT_PACKAGES_RESOLVED" |
+    tr ' ' '\n' |
+    grep -Fxq "fastbootd"; then
+
+    pass "fastbootd resolved"
+
+else
+
+    fail "fastbootd NOT resolved"
+
+fi
+
+# ============================================================
+# 30. RESOLVED DYNAMIC PARTITIONS
+# ============================================================
+
+echo
+echo "=================================================="
+echo " [30] RESOLVED DYNAMIC PARTITIONS"
 echo "=================================================="
 echo
 
@@ -762,17 +840,41 @@ DYNAMIC_RESOLVED="$(get_build_var PRODUCT_USE_DYNAMIC_PARTITIONS)"
 
 echo "PRODUCT_USE_DYNAMIC_PARTITIONS = $DYNAMIC_RESOLVED"
 
-[ "$DYNAMIC_RESOLVED" = "true" ] \
-    && pass "Dynamic partitions enabled" \
-    || fail "Dynamic partitions not enabled"
+if [ "$DYNAMIC_RESOLVED" = "true" ]; then
+    pass "Dynamic partitions resolved"
+else
+    fail "Dynamic partitions not resolved as true"
+fi
 
 # ============================================================
-# 28. FINAL RESULT
+# 31. FINAL SOURCE OUTPUT CHECKS
 # ============================================================
 
 echo
 echo "=================================================="
-echo "             FINAL PREFLIGHT RESULT"
+echo " [31] FINAL OUTPUT DIRECTORY CHECK"
+echo "=================================================="
+echo
+
+OUT_PRODUCT="out/target/product/veux"
+
+if [ -d "$OUT_PRODUCT" ]; then
+    pass "VEUX output directory exists"
+else
+    fail "VEUX output directory missing"
+fi
+
+# We are not building, so output images are NOT required here.
+# This check only confirms product configuration created the
+# expected output tree.
+
+# ============================================================
+# 32. FINAL RESULT
+# ============================================================
+
+echo
+echo "=================================================="
+echo "              FINAL PREFLIGHT RESULT"
 echo "=================================================="
 echo
 
@@ -781,22 +883,25 @@ if [ "$FAIL" -eq 0 ]; then
     echo
     echo "**************************************************"
     echo "*                                                *"
-    echo "*          23.2 PREFLIGHT PASSED                *"
+    echo "*          23.2 PREFLIGHT PASSED                 *"
     echo "*                                                *"
     echo "**************************************************"
     echo
-    echo "Device      : VEUX/PEUX"
-    echo "Product     : $TARGET_PRODUCT_RESOLVED"
-    echo "Kernel      : $TARGET_KERNEL_SOURCE_RESOLVED"
+    echo "Device       : VEUX/PEUX"
+    echo "Product      : $TARGET_PRODUCT_RESOLVED"
+    echo "Kernel       : $TARGET_KERNEL_SOURCE_RESOLVED"
     echo
-    echo "BootControl normal   : VERIFIED"
-    echo "BootControl recovery : VERIFIED"
-    echo "Fastbootd            : VERIFIED"
-    echo "Dynamic partitions   : VERIFIED"
+    echo "BootControl  : VERIFIED"
+    echo "fastbootd    : VERIFIED"
+    echo "Virtual A/B  : VERIFIED"
+    echo "Dynamic Partitions : VERIFIED"
+    echo "Vendor       : VERIFIED"
     echo
     echo "NO ROM BUILD WAS STARTED."
     echo
-    echo "Safe to proceed to the separate build stage."
+    echo "=================================================="
+    echo " SAFE TO PROCEED TO BUILD STAGE"
+    echo "=================================================="
     echo
 
     exit 0
@@ -806,7 +911,7 @@ else
     echo
     echo "**************************************************"
     echo "*                                                *"
-    echo "*          23.2 PREFLIGHT FAILED                 *"
+    echo "*          23.2 PREFLIGHT FAILED                  *"
     echo "*                                                *"
     echo "**************************************************"
     echo
