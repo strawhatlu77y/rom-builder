@@ -1,12 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "======================================"
-echo " LineageOS 22.1 VEUX Build"
-echo " Xiaomi VEUX / PEUX"
-echo "======================================"
+echo "=============================================="
+echo " LineageOS 22.1 VEUX / PEUX Crave Build"
+echo "=============================================="
 
-rm -rf .repo/local_manifests/
+# ------------------------------------------------
+# 1. Clean local manifest and initialize source
+# ------------------------------------------------
+
+rm -rf .repo/local_manifests
 mkdir -p .repo/local_manifests
 
 repo init \
@@ -15,75 +18,159 @@ repo init \
     --git-lfs \
     --depth=1
 
-cat > .repo/local_manifests/veux.xml << "EOF"
+# ------------------------------------------------
+# 2. VEUX local manifest
+# ------------------------------------------------
+
+cat > .repo/local_manifests/veux.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-  <project name="Amrito-Projects/device_xiaomi_veux" path="device/xiaomi/veux" revision="15" depth="1" />
-  <project name="Amrito-Projects/vendor_xiaomi_veux-new" path="vendor/xiaomi/veux" revision="15" depth="1" />
-  <project name="dereference23/kernel_xiaomi_sm6375" path="kernel/xiaomi/veux" revision="main" depth="1" />
-  <project name="LineageOS/android_hardware_xiaomi" path="hardware/xiaomi" revision="lineage-22.1" depth="1" />
-  <project name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi" path="hardware/qcom-caf/sm8350/audio/configs/holi" revision="14" depth="1" />
-  <project name="Positron-B/vendor_xiaomi_miuicamera-veux" path="vendor/xiaomi/miuicamera-veux" revision="main" depth="1" />
-  <project name="Positron-B/vendor_xiaomi_miuicamera" path="vendor/xiaomi/miuicamera" revision="main" depth="1" />
-  <project name="userariii/vendor_sony_dolby" path="vendor/sony/dolby" revision="v1.0_sonyDAXUI" depth="1" />
-  <project name="TogoFire/packages_apps_ViPER4AndroidFX" path="packages/apps/ViPER4AndroidFX" revision="v4a" depth="1" />
+
+    <project
+        name="Amrito-Projects/device_xiaomi_veux"
+        path="device/xiaomi/veux"
+        revision="15"
+        depth="1" />
+
+    <project
+        name="Amrito-Projects/vendor_xiaomi_veux-new"
+        path="vendor/xiaomi/veux"
+        revision="15"
+        depth="1" />
+
+    <project
+        name="dereference23/kernel_xiaomi_sm6375"
+        path="kernel/xiaomi/veux"
+        revision="main"
+        depth="1" />
+
+    <project
+        name="LineageOS/android_hardware_xiaomi"
+        path="hardware/xiaomi"
+        revision="lineage-22.1"
+        depth="1" />
+
+    <project
+        name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi"
+        path="hardware/qcom-caf/sm8350/audio/configs/holi"
+        revision="14"
+        depth="1" />
+
+    <project
+        name="Positron-B/vendor_xiaomi_miuicamera-veux"
+        path="vendor/xiaomi/miuicamera-veux"
+        revision="main"
+        depth="1" />
+
+    <project
+        name="Positron-B/vendor_xiaomi_miuicamera"
+        path="vendor/xiaomi/miuicamera"
+        revision="main"
+        depth="1" />
+
+    <project
+        name="userariii/vendor_sony_dolby"
+        path="vendor/sony/dolby"
+        revision="v1.0_sonyDAXUI"
+        depth="1" />
+
+    <project
+        name="TogoFire/packages_apps_ViPER4AndroidFX"
+        path="packages/apps/ViPER4AndroidFX"
+        revision="v4a"
+        depth="1" />
+
 </manifest>
 EOF
 
+echo "Local manifest created."
+
+# ------------------------------------------------
+# 3. Crave resync
+# ------------------------------------------------
+
+echo "=============================================="
+echo " Running Crave resync"
+echo "=============================================="
+
 /opt/crave/resync.sh
 
-# ============================================================
-# Verify QTI BootControl
-# ============================================================
+# ------------------------------------------------
+# 4. Verify required repositories
+# ------------------------------------------------
 
-if [ -d "hardware/qcom-caf/bootctrl" ]; then
-    echo "QTI BootControl directory found."
-    ls -la hardware/qcom-caf/bootctrl | head -30
-else
-    echo "ERROR: hardware/qcom-caf/bootctrl is missing."
-    exit 1
-fi
+echo "=============================================="
+echo " Verifying source tree"
+echo "=============================================="
 
-# ============================================================
-# Verify kernel
-# ============================================================
+for DIR in \
+    device/xiaomi/veux \
+    vendor/xiaomi/veux \
+    kernel/xiaomi/veux \
+    hardware/xiaomi \
+    hardware/qcom-caf/bootctrl
+do
+    if [ ! -d "$DIR" ]; then
+        echo "ERROR: Missing required directory: $DIR"
+        exit 1
+    fi
+done
 
-if [ ! -d "kernel/xiaomi/veux" ]; then
-    echo "ERROR: kernel/xiaomi/veux was not found."
-    exit 1
-fi
+echo "Required repositories found."
 
-echo "Resolved kernel revision:"
+# ------------------------------------------------
+# 5. Verify kernel
+# ------------------------------------------------
+
+echo "=============================================="
+echo " Checking kernel"
+echo "=============================================="
+
+echo "Kernel revision:"
 git -C kernel/xiaomi/veux rev-parse HEAD
 
-if ! find kernel/xiaomi/veux -type f -name "veux_defconfig" -print -quit | grep -q .; then
+if ! find kernel/xiaomi/veux \
+    -type f \
+    -name "veux_defconfig" \
+    -print \
+    -quit | grep -q .
+then
     echo "ERROR: veux_defconfig was not found."
     exit 1
 fi
 
-echo "veux_defconfig found — kernel OK"
+echo "veux_defconfig found."
 
-# ============================================================
-# Verify device/vendor
-# ============================================================
+# ------------------------------------------------
+# 6. Verify audio configuration
+# ------------------------------------------------
 
-if [ ! -d "device/xiaomi/veux" ]; then
-    echo "ERROR: device/xiaomi/veux was not found."
+if [ ! -f \
+    hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt
+]; then
+    echo "ERROR: audio_tuning_mixer.txt is missing."
     exit 1
 fi
 
-if [ ! -d "vendor/xiaomi/veux" ]; then
-    echo "ERROR: vendor/xiaomi/veux was not found."
-    exit 1
-fi
+echo "Audio configuration found."
 
-# ============================================================
-# Device tree fixes
-# ============================================================
+# ------------------------------------------------
+# 7. Remove obsolete vendor setup
+# ------------------------------------------------
 
 rm -f device/xiaomi/veux/vendorsetup.sh
 
-sed -i '/android.hardware.boot-service.qti/d' device/xiaomi/veux/device.mk
+# ------------------------------------------------
+# 8. Remove obsolete QTI BootControl package
+# ------------------------------------------------
+
+sed -i \
+    '/android.hardware.boot-service.qti/d' \
+    device/xiaomi/veux/device.mk
+
+# ------------------------------------------------
+# 9. Add QTI BootControl packages
+# ------------------------------------------------
 
 cat >> device/xiaomi/veux/device.mk << 'EOF'
 
@@ -95,43 +182,26 @@ PRODUCT_PACKAGES += \
     android.hardware.boot-service.qti \
     android.hardware.boot-service.qti.recovery
 
-$(call soong_config_set,QTI_GPT_UTILS,USE_BSG_FRAMEWORK,false)
-
-EOF
-
-# ============================================================
-# Make QTI BootControl visible to Soong
-# ============================================================
-
-if grep -q "hardware/qcom-caf/bootctrl" device/xiaomi/veux/device.mk; then
-    echo "BootControl namespace already present in device.mk."
-else
-    cat >> device/xiaomi/veux/device.mk << 'EOF'
-
 # Make QTI BootControl visible to Soong
 PRODUCT_SOONG_NAMESPACES += \
     hardware/qcom-caf/bootctrl
 
 EOF
+
+# ------------------------------------------------
+# 10. Add QTI BootControl binaries if missing
+# ------------------------------------------------
+
+BOOTCTRL_BP="hardware/qcom-caf/bootctrl/aidl/Android.bp"
+
+if [ ! -f "$BOOTCTRL_BP" ]; then
+    echo "ERROR: $BOOTCTRL_BP not found."
+    exit 1
 fi
 
-# ============================================================
-# Add missing QTI BootControl binaries
-#
-# The synced AIDL Android.bp contains the defaults but does not
-# define the final cc_binary modules.
-# ============================================================
+if ! grep -q 'name: "android.hardware.boot-service.qti",' "$BOOTCTRL_BP"; then
 
-if grep -q 'name: "android.hardware.boot-service.qti",' \
-    hardware/qcom-caf/bootctrl/aidl/Android.bp; then
-
-    echo "QTI BootControl binaries already defined."
-
-else
-
-    echo "Adding missing QTI BootControl binaries..."
-
-    cat >> hardware/qcom-caf/bootctrl/aidl/Android.bp << 'EOF'
+    cat >> "$BOOTCTRL_BP" << 'EOF'
 
 cc_binary {
     name: "android.hardware.boot-service.qti",
@@ -149,87 +219,113 @@ EOF
 
 fi
 
-# ============================================================
-# BoardConfig fix
-# ============================================================
+# ------------------------------------------------
+# 11. Fix QTI GPT Utils UFS compatibility
+#
+# The Lineage 22.1 tree does not contain:
+#
+#   scsi/ufs/ioctl.h
+#
+# The gpt-utils source already contains a BSG
+# implementation guarded by:
+#
+#   _BSG_FRAMEWORK_KERNEL_HEADERS
+#
+# Force the BSG implementation.
+# ------------------------------------------------
 
-sed -i '1a\
-\
-BOARD_OPENSOURCE_DIR :=' device/xiaomi/veux/BoardConfig.mk
+GPT_BP="hardware/qcom-caf/bootctrl/gpt-utils/Android.bp"
 
-# ============================================================
-# Audio debug information
-# ============================================================
-
-if ! grep -q "AUDIO_DEBUG:" \
-    hardware/qcom-caf/sm8350/audio/hal/audio_extn/Android.mk; then
-
-    sed -i '/endif # BOARD_OPENSOURCE_DIR/a $(warning AUDIO_DEBUG: BOARD_OPENSOURCE_DIR=[$(BOARD_OPENSOURCE_DIR)] PRIMARY_HAL_PATH=[$(PRIMARY_HAL_PATH)])' \
-        hardware/qcom-caf/sm8350/audio/hal/audio_extn/Android.mk
-fi
-
-# ============================================================
-# Verify Holi audio configuration
-# ============================================================
-
-if [ ! -f hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt ]; then
-    echo "ERROR: audio_tuning_mixer.txt is missing."
+if [ ! -f "$GPT_BP" ]; then
+    echo "ERROR: $GPT_BP not found."
     exit 1
 fi
 
-# ============================================================
-# Diagnostics
-# ============================================================
+sed -i \
+    's/"false": \[\],/"false": ["-D_BSG_FRAMEWORK_KERNEL_HEADERS"],/' \
+    "$GPT_BP"
 
-echo "======================================"
-echo " BootControl configuration"
-echo "======================================"
+echo "QTI GPT Utils configuration:"
+grep -n -A5 -B2 \
+    'USE_BSG_FRAMEWORK' \
+    "$GPT_BP"
 
-grep -nA8 \
-    "android.hardware.boot-service.qti" \
-    device/xiaomi/veux/device.mk || true
+# ------------------------------------------------
+# 12. BoardConfig compatibility
+# ------------------------------------------------
 
-grep -nA3 -B2 \
-    "hardware/qcom-caf/bootctrl" \
-    device/xiaomi/veux/device.mk || true
+if ! grep -q '^BOARD_OPENSOURCE_DIR *:=' \
+    device/xiaomi/veux/BoardConfig.mk
+then
+    sed -i '1a\
+\
+BOARD_OPENSOURCE_DIR :=
+' device/xiaomi/veux/BoardConfig.mk
+fi
 
-echo "======================================"
-echo " BootControl binaries"
-echo "======================================"
+# ------------------------------------------------
+# 13. Audio debug information
+# ------------------------------------------------
 
-grep -nA4 -B1 \
-    'name: "android.hardware.boot-service.qti"' \
-    hardware/qcom-caf/bootctrl/aidl/Android.bp || true
+AUDIO_MK="hardware/qcom-caf/sm8350/audio/hal/audio_extn/Android.mk"
 
-grep -nA4 -B1 \
-    'name: "android.hardware.boot-service.qti.recovery"' \
-    hardware/qcom-caf/bootctrl/aidl/Android.bp || true
+if [ -f "$AUDIO_MK" ]; then
 
-# ============================================================
-# Build environment
-# ============================================================
+    if ! grep -q 'AUDIO_DEBUG:' "$AUDIO_MK"; then
+
+        sed -i '/endif # BOARD_OPENSOURCE_DIR/a\
+$(warning AUDIO_DEBUG: BOARD_OPENSOURCE_DIR=[$(BOARD_OPENSOURCE_DIR)] PRIMARY_HAL_PATH=[$(PRIMARY_HAL_PATH)])
+' "$AUDIO_MK"
+
+    fi
+
+fi
+
+# ------------------------------------------------
+# 14. Build environment
+# ------------------------------------------------
 
 export BUILD_USERNAME=crave
 export BUILD_HOSTNAME=foss
+
 export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
+
+# ------------------------------------------------
+# 15. Final verification before build
+# ------------------------------------------------
+
+echo "=============================================="
+echo " FINAL SOURCE CHECK"
+echo "=============================================="
+
+echo "Device:"
+ls -ld device/xiaomi/veux
+
+echo "Vendor:"
+ls -ld vendor/xiaomi/veux
+
+echo "Kernel:"
+ls -ld kernel/xiaomi/veux
+
+echo "BootControl:"
+ls -ld hardware/qcom-caf/bootctrl
+
+echo "GPT Utils:"
+ls -ld hardware/qcom-caf/bootctrl/gpt-utils
+
+echo "=============================================="
+echo " Starting LineageOS build"
+echo "=============================================="
 
 source build/envsetup.sh
 
-# ============================================================
-# Configure device
-# ============================================================
-
 breakfast veux
-
-# ============================================================
-# Build LineageOS
-# ============================================================
 
 mka bacon
 
-# ============================================================
-# Collect output
-# ============================================================
+# ------------------------------------------------
+# 16. Collect output
+# ------------------------------------------------
 
 mkdir -p imgs_output
 
@@ -245,13 +341,9 @@ cp out/target/product/veux/recovery.img \
 cp out/target/product/veux/vendor_boot.img \
     imgs_output/ 2>/dev/null || true
 
-# ============================================================
-# Show ROM ZIP
-# ============================================================
-
-echo "======================================"
-echo " Build output"
-echo "======================================"
+echo "=============================================="
+echo " BUILD OUTPUT"
+echo "=============================================="
 
 find out/target/product/veux \
     -maxdepth 1 \
@@ -259,12 +351,14 @@ find out/target/product/veux \
     -name "lineage-*.zip" \
     -print || true
 
-ls -lh out/target/product/veux/*.zip \
+ls -lh \
+    out/target/product/veux/*.zip \
     2>/dev/null || true
 
-ls -lh imgs_output/ \
+ls -lh \
+    imgs_output/ \
     2>/dev/null || true
 
-echo "======================================"
-echo " Build script finished"
-echo "======================================"
+echo "=============================================="
+echo " BUILD FINISHED"
+echo "=============================================="
