@@ -1,100 +1,16 @@
 #!/bin/bash
 set -e
 
-###############################################################################
-# LineageOS 22.1 + MindTheGapps
-# Xiaomi VEUX / PEUX
-#
-# Device:
-#   Redmi Note 11 Pro+ 5G
-#   POCO X4 Pro 5G
-#
-# Android:
-#   Android 15
-#   LineageOS 22.1
-#
-# GApps:
-#   MindTheGapps 15.0.0 ARM64
-#   Release: 20260915_032013
-#   Source commit:
-#   e14b22768c60978d0e1267dab5bcf62dfcc73d16
-#
-# IMPORTANT:
-# This script is designed to be executed with:
-#
-#   crave run --no-patch -- "bash lineage22.1-veux-gapps.sh"
-#
-# or through the GitHub raw URL.
-###############################################################################
+echo "=============================================="
+echo " LineageOS 22.1 VEUX / PEUX + MindTheGapps"
+echo "=============================================="
 
-set -o pipefail
-
-###############################################################################
-# BUILD ENVIRONMENT
-###############################################################################
-
-export BUILD_USERNAME=crave
-export BUILD_HOSTNAME=foss
-export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
-
-###############################################################################
-# PATHS
-###############################################################################
-
-DEVICE_PATH="device/xiaomi/veux"
-BOOTCTRL_PATH="hardware/qcom-caf/bootctrl"
-GAPPS_PATH="vendor/gapps"
-
-GAPPS_COMMIT="e14b22768c60978d0e1267dab5bcf62dfcc73d16"
-
-###############################################################################
-# HELPER FUNCTIONS
-###############################################################################
-
-die() {
-    echo
-    echo "============================================================"
-    echo " ERROR"
-    echo "============================================================"
-    echo "$1"
-    exit 1
-}
-
-section() {
-    echo
-    echo "============================================================"
-    echo " $1"
-    echo "============================================================"
-}
-
-###############################################################################
-# CHECK WORKING DIRECTORY
-###############################################################################
-
-section "CHECKING BUILD DIRECTORY"
-
-echo "Current directory:"
-pwd
-
-if [ ! -d ".repo" ]; then
-    echo "No existing Lineage source detected."
-    echo "repo init will create the source tree."
-fi
-
-###############################################################################
-# CLEAN LOCAL MANIFESTS
-###############################################################################
-
-section "CLEANING LOCAL MANIFESTS"
+# ============================================================
+# 1. Clean local manifest and initialize source
+# ============================================================
 
 rm -rf .repo/local_manifests
 mkdir -p .repo/local_manifests
-
-###############################################################################
-# INITIALIZE LINEAGEOS 22.1
-###############################################################################
-
-section "INITIALIZING LINEAGEOS 22.1"
 
 repo init \
     -u https://github.com/LineageOS/android.git \
@@ -102,72 +18,50 @@ repo init \
     --git-lfs \
     --depth=1
 
-###############################################################################
-# CREATE LOCAL MANIFEST
-###############################################################################
+# ============================================================
+# 2. VEUX local manifest
+# ============================================================
 
-section "CREATING VEUX + MINDTHEGAPPS MANIFEST"
-
-cat > .repo/local_manifests/veux.xml <<EOF
+cat > .repo/local_manifests/veux.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
-
 <manifest>
 
-    <!-- ========================================================= -->
-    <!-- Xiaomi VEUX device tree                                   -->
-    <!-- ========================================================= -->
-
+    <!-- VEUX Device Tree -->
     <project
         name="Amrito-Projects/device_xiaomi_veux"
         path="device/xiaomi/veux"
         revision="15"
         depth="1" />
 
-    <!-- ========================================================= -->
-    <!-- Xiaomi proprietary vendor                                 -->
-    <!-- ========================================================= -->
-
+    <!-- VEUX Vendor -->
     <project
         name="Amrito-Projects/vendor_xiaomi_veux-new"
         path="vendor/xiaomi/veux"
         revision="15"
         depth="1" />
 
-    <!-- ========================================================= -->
-    <!-- Kernel                                                     -->
-    <!-- ========================================================= -->
-
+    <!-- VEUX Kernel -->
     <project
         name="dereference23/kernel_xiaomi_sm6375"
         path="kernel/xiaomi/veux"
         revision="main"
         depth="1" />
 
-    <!-- ========================================================= -->
-    <!-- Xiaomi hardware                                             -->
-    <!-- ========================================================= -->
-
+    <!-- Xiaomi Hardware -->
     <project
         name="LineageOS/android_hardware_xiaomi"
         path="hardware/xiaomi"
         revision="lineage-22.1"
         depth="1" />
 
-    <!-- ========================================================= -->
-    <!-- Holi audio configuration                                   -->
-    <!-- ========================================================= -->
-
+    <!-- Holi Audio Configuration -->
     <project
         name="Amrito-Projects/hardware_qcom-caf_sm8350_audio_configs_holi"
         path="hardware/qcom-caf/sm8350/audio/configs/holi"
         revision="14"
         depth="1" />
 
-    <!-- ========================================================= -->
-    <!-- MindTheGapps Android 15                                    -->
-    <!-- Exact release source commit                               -->
-    <!-- ========================================================= -->
-
+    <!-- MindTheGapps Android 15 -->
     <remote
         name="mindthegapps"
         fetch="https://gitlab.com/MindTheGapps/" />
@@ -176,345 +70,370 @@ cat > .repo/local_manifests/veux.xml <<EOF
         name="vendor_gapps"
         path="vendor/gapps"
         remote="mindthegapps"
-        revision="${GAPPS_COMMIT}" />
+        revision="e14b22768c60978d0e1267dab5bcf62dfcc73d16" />
 
 </manifest>
 EOF
 
-###############################################################################
-# RESYNC SOURCE
-###############################################################################
+echo "Local manifest created."
 
-section "RESYNCING SOURCE WITH CRAVE"
+# ============================================================
+# 3. Crave resync
+# ============================================================
 
-echo "Using /opt/crave/resync.sh"
-echo "This may take some time."
+echo "=============================================="
+echo " Running Crave resync"
+echo "=============================================="
 
 /opt/crave/resync.sh
 
-###############################################################################
-# VERIFY REQUIRED DIRECTORIES
-###############################################################################
+# ============================================================
+# 4. Verify required repositories
+# ============================================================
 
-section "VERIFYING REQUIRED REPOSITORIES"
+echo "=============================================="
+echo " Verifying source tree"
+echo "=============================================="
 
-REQUIRED_DIRS=(
-    "$DEVICE_PATH"
-    "vendor/xiaomi/veux"
-    "kernel/xiaomi/veux"
-    "hardware/xiaomi"
-    "hardware/qcom-caf/sm8350/audio/configs/holi"
-    "$BOOTCTRL_PATH"
-    "$GAPPS_PATH"
-)
-
-for DIR in "${REQUIRED_DIRS[@]}"; do
-
+for DIR in \
+    device/xiaomi/veux \
+    vendor/xiaomi/veux \
+    kernel/xiaomi/veux \
+    hardware/xiaomi \
+    hardware/qcom-caf/bootctrl \
+    hardware/qcom-caf/sm8350/audio/configs/holi \
+    vendor/gapps
+do
     if [ ! -d "$DIR" ]; then
-        die "Required directory missing: $DIR"
+        echo "ERROR: Missing required directory: $DIR"
+        exit 1
     fi
-
-    echo "OK: $DIR"
-
 done
 
-###############################################################################
-# VERIFY MINDTHEGAPPS
-###############################################################################
+echo "Required repositories found."
 
-section "VERIFYING MINDTHEGAPPS"
+# ============================================================
+# 5. Verify kernel
+# ============================================================
 
-if [ ! -f "$GAPPS_PATH/arm64/arm64-vendor.mk" ]; then
-    die "MindTheGapps arm64-vendor.mk was not found."
+echo "=============================================="
+echo " Checking kernel"
+echo "=============================================="
+
+echo "Kernel revision:"
+git -C kernel/xiaomi/veux rev-parse HEAD
+
+if ! find kernel/xiaomi/veux \
+    -type f \
+    -name "veux_defconfig" \
+    -print \
+    -quit | grep -q .
+then
+    echo "ERROR: veux_defconfig was not found."
+    exit 1
+fi
+
+echo "veux_defconfig found."
+
+# ============================================================
+# 6. Verify audio configuration
+# ============================================================
+
+if [ ! -f \
+    hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt
+]; then
+    echo "ERROR: audio_tuning_mixer.txt is missing."
+    exit 1
+fi
+
+echo "Audio configuration found."
+
+# ============================================================
+# 7. Verify MindTheGapps
+# ============================================================
+
+echo "=============================================="
+echo " Checking MindTheGapps"
+echo "=============================================="
+
+GAPPS_MK="vendor/gapps/arm64/arm64-vendor.mk"
+
+if [ ! -f "$GAPPS_MK" ]; then
+    echo "ERROR: $GAPPS_MK not found."
+    exit 1
 fi
 
 echo "MindTheGapps makefile found."
 
-###############################################################################
-# VERIFY EXACT GAPPS COMMIT
-###############################################################################
+EXPECTED_GAPPS_COMMIT="e14b22768c60978d0e1267dab5bcf62dfcc73d16"
+ACTUAL_GAPPS_COMMIT="$(git -C vendor/gapps rev-parse HEAD)"
 
-if git -C "$GAPPS_PATH" rev-parse HEAD >/dev/null 2>&1; then
+echo "Expected GApps commit:"
+echo "$EXPECTED_GAPPS_COMMIT"
 
-    ACTUAL_GAPPS_COMMIT="$(git -C "$GAPPS_PATH" rev-parse HEAD)"
+echo "Actual GApps commit:"
+echo "$ACTUAL_GAPPS_COMMIT"
 
-    echo "Expected GApps commit:"
-    echo "$GAPPS_COMMIT"
-
-    echo "Actual GApps commit:"
-    echo "$ACTUAL_GAPPS_COMMIT"
-
-    if [ "$ACTUAL_GAPPS_COMMIT" != "$GAPPS_COMMIT" ]; then
-        die "MindTheGapps commit mismatch."
-    fi
-
-    echo "MindTheGapps commit verified."
-
-else
-    die "Unable to determine MindTheGapps Git commit."
+if [ "$ACTUAL_GAPPS_COMMIT" != "$EXPECTED_GAPPS_COMMIT" ]; then
+    echo "ERROR: MindTheGapps commit mismatch."
+    exit 1
 fi
 
-###############################################################################
-# REMOVE OBSOLETE VENDORSETUP
-###############################################################################
+echo "MindTheGapps commit verified."
 
-section "REMOVING OBSOLETE VENDORSETUP"
+# ============================================================
+# 8. Remove obsolete vendor setup
+# ============================================================
 
-rm -f "$DEVICE_PATH/vendorsetup.sh"
+rm -f device/xiaomi/veux/vendorsetup.sh
 
-echo "vendorsetup.sh removed if it existed."
-
-###############################################################################
-# REMOVE CUSTOM MIUI CAMERA / DOLBY / VIPER REFERENCES
-###############################################################################
-
-section "REMOVING MIUI CAMERA / DOLBY / VIPER"
-
-DEVICE_MK="$DEVICE_PATH/device.mk"
-
-[ -f "$DEVICE_MK" ] || die "device.mk not found."
-
-###############################################################################
-# MIUI CAMERA
-###############################################################################
+# ============================================================
+# 9. Remove old QTI BootControl references
+# ============================================================
 
 sed -i \
-    '/vendor\/xiaomi\/miuicamera-veux\/MiuiCamera-veux.mk/d' \
-    "$DEVICE_MK"
+    '/android.hardware.boot-service.qti/d' \
+    device/xiaomi/veux/device.mk
 
-###############################################################################
-# VIPER4ANDROID
-###############################################################################
+# ============================================================
+# 10. Add QTI BootControl packages + namespace
+# ============================================================
 
-sed -i \
-    '/packages\/apps\/ViPER4AndroidFX\/config.mk/d' \
-    "$DEVICE_MK"
+cat >> device/xiaomi/veux/device.mk << 'EOF'
 
-###############################################################################
-# DOLBY
-###############################################################################
+# ============================================================
+# QTI BootControl
+# ============================================================
 
-sed -i \
-    '/vendor\/sony\/dolby\/setup.mk/d' \
-    "$DEVICE_MK"
+PRODUCT_PACKAGES += \
+    android.hardware.boot-service.qti \
+    android.hardware.boot-service.qti.recovery
 
-###############################################################################
-# REMOVE OLD COMMENTS
-###############################################################################
+PRODUCT_SOONG_NAMESPACES += \
+    hardware/qcom-caf/bootctrl
 
-sed -i '/^# MiuiCamera$/d' "$DEVICE_MK"
-sed -i '/^# Viper4AndroidFX$/d' "$DEVICE_MK"
-sed -i '/^# Dolby$/d' "$DEVICE_MK"
+EOF
 
-###############################################################################
-# REMOVE MIUI CAMERA SEPOLICY REFERENCE
-###############################################################################
+# ============================================================
+# 11. Add QTI BootControl binaries if missing
+# ============================================================
 
-section "REMOVING MIUI CAMERA SEPOLICY"
+BOOTCTRL_BP="hardware/qcom-caf/bootctrl/aidl/Android.bp"
 
-BOARD_CONFIG="$DEVICE_PATH/BoardConfig.mk"
-
-[ -f "$BOARD_CONFIG" ] || die "BoardConfig.mk not found."
-
-sed -i \
-    '/vendor\/xiaomi\/miuicamera-veux\/SEPolicy-veux.mk/d' \
-    "$BOARD_CONFIG"
-
-###############################################################################
-# DISABLE QCOM DOLBY DAP
-###############################################################################
-
-section "DISABLING DOLBY DAP"
-
-if grep -q '^AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP' "$BOARD_CONFIG"; then
-
-    sed -i \
-        's/^AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP.*/AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP := false/' \
-        "$BOARD_CONFIG"
-
-else
-
-    printf '\nAUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP := false\n' \
-        >> "$BOARD_CONFIG"
-
+if [ ! -f "$BOOTCTRL_BP" ]; then
+    echo "ERROR: $BOOTCTRL_BP not found."
+    exit 1
 fi
 
-echo "Dolby DAP disabled."
+if ! grep -q 'name: "android.hardware.boot-service.qti",' "$BOOTCTRL_BP"; then
 
-###############################################################################
-# REMOVE RemovePackagesVeux
-###############################################################################
-
-section "REMOVING RemovePackagesVeux"
-
-rm -rf "$DEVICE_PATH/RemovePackages"
-
-sed -i '/RemovePackagesVeux/d' "$DEVICE_MK"
-sed -i '/^# Remove unwanted packages$/d' "$DEVICE_MK"
-
-###############################################################################
-# BOOT CONTROL FIX
-###############################################################################
-
-section "APPLYING QTI BOOT CONTROL FIX"
-
-AIDL_BP="$BOOTCTRL_PATH/aidl/Android.bp"
-
-[ -f "$AIDL_BP" ] || die "Missing bootctrl Android.bp."
-
-###############################################################################
-# Add normal QTI boot service
-###############################################################################
-
-if ! grep -q 'name: "android.hardware.boot-service.qti",' "$AIDL_BP"; then
-
-cat >> "$AIDL_BP" <<'EOF'
+cat >> "$BOOTCTRL_BP" << 'EOF'
 
 cc_binary {
     name: "android.hardware.boot-service.qti",
     defaults: ["android.hardware.boot-service.qti_defaults"],
     static_libs: ["libgptutils.qti"],
 }
-EOF
-
-fi
-
-###############################################################################
-# Add recovery QTI boot service
-###############################################################################
-
-if ! grep -q 'name: "android.hardware.boot-service.qti.recovery",' "$AIDL_BP"; then
-
-cat >> "$AIDL_BP" <<'EOF'
 
 cc_binary {
     name: "android.hardware.boot-service.qti.recovery",
     defaults: ["android.hardware.boot-service.qti.recovery_defaults"],
     static_libs: ["libgptutils.qti"],
 }
+
 EOF
 
 fi
 
-###############################################################################
-# GPT UTILS FIX
-#
-# Original problem:
-#
-# fatal error:
-# 'scsi/ufs/ioctl.h' file not found
-#
-# Successful build used:
-#
-# -D_BSG_FRAMEWORK_KERNEL_HEADERS
-###############################################################################
+# ============================================================
+# 12. Fix QTI GPT Utils UFS compatibility
+# ============================================================
 
-section "APPLYING GPT UTILS HEADER FIX"
+GPT_BP="hardware/qcom-caf/bootctrl/gpt-utils/Android.bp"
 
-GPT_BP="$BOOTCTRL_PATH/gpt-utils/Android.bp"
-
-[ -f "$GPT_BP" ] || die "Missing GPT Utils Android.bp."
-
-if grep -q 'false: \[\]' "$GPT_BP"; then
-
-    sed -i \
-        's/false: \[\]/false: ["-D_BSG_FRAMEWORK_KERNEL_HEADERS"]/' \
-        "$GPT_BP"
-
-elif ! grep -q '_BSG_FRAMEWORK_KERNEL_HEADERS' "$GPT_BP"; then
-
-    die "Unable to apply GPT Utils header fix automatically."
-
+if [ ! -f "$GPT_BP" ]; then
+    echo "ERROR: $GPT_BP not found."
+    exit 1
 fi
 
-###############################################################################
-# BOARD_OPENSOURCE_DIR FIX
-###############################################################################
+echo "Applying QTI GPT Utils BSG compatibility fix..."
 
-section "APPLYING BOARD_OPENSOURCE_DIR FIX"
+sed -i \
+    's/"false": \[\],/"false": ["-D_BSG_FRAMEWORK_KERNEL_HEADERS"],/' \
+    "$GPT_BP"
 
-if ! grep -q '^BOARD_OPENSOURCE_DIR' "$BOARD_CONFIG"; then
-    printf '\nBOARD_OPENSOURCE_DIR :=\n' >> "$BOARD_CONFIG"
+# ============================================================
+# 13. Verify GPT fix
+# ============================================================
+
+if grep -q \
+    '"false": \["-D_BSG_FRAMEWORK_KERNEL_HEADERS"\]' \
+    "$GPT_BP"
+then
+    echo "GPT Utils BSG compatibility fix: PRESENT"
+else
+    echo "ERROR: GPT Utils BSG compatibility fix was NOT applied."
+    exit 1
 fi
 
-echo "BOARD_OPENSOURCE_DIR is defined."
+# ============================================================
+# 14. BoardConfig compatibility
+# ============================================================
 
-###############################################################################
-# VERIFY AUDIO CONFIGURATION
-###############################################################################
-
-section "VERIFYING AUDIO CONFIGURATION"
-
-if ! grep -q 'audio.primary.holi' "$DEVICE_MK"; then
-    die "audio.primary.holi is missing from device.mk."
+if ! grep -q '^BOARD_OPENSOURCE_DIR *:=' \
+    device/xiaomi/veux/BoardConfig.mk
+then
+    sed -i '1a\
+\
+BOARD_OPENSOURCE_DIR :=
+' device/xiaomi/veux/BoardConfig.mk
 fi
 
-if ! grep -q 'audio_tuning_mixer.txt' "$DEVICE_MK"; then
-    die "audio_tuning_mixer.txt is missing from device.mk."
-fi
+echo "BOARD_OPENSOURCE_DIR: PRESENT"
 
-if [ ! -d "hardware/qcom-caf/sm8350/audio/configs/holi" ]; then
-    die "Holi audio configuration directory missing."
-fi
+# ============================================================
+# 15. Audio debug information
+# Retained from original working script
+# ============================================================
 
-echo "Qualcomm Holi audio configuration verified."
+AUDIO_MK="hardware/qcom-caf/sm8350/audio/hal/audio_extn/Android.mk"
 
-###############################################################################
-# VERIFY AUDIO HAL PACKAGES
-###############################################################################
+if [ -f "$AUDIO_MK" ]; then
 
-for AUDIO_MODULE in \
-    audio.primary.holi \
-    audio.bluetooth.default \
-    audio.r_submix.default \
-    audio.usb.default
-do
+    if ! grep -q 'AUDIO_DEBUG:' "$AUDIO_MK"; then
 
-    if ! grep -q "$AUDIO_MODULE" "$DEVICE_MK"; then
-        die "Required audio module missing: $AUDIO_MODULE"
+        sed -i '/endif # BOARD_OPENSOURCE_DIR/a\
+$(warning AUDIO_DEBUG: BOARD_OPENSOURCE_DIR=[$(BOARD_OPENSOURCE_DIR)] PRIMARY_HAL_PATH=[$(PRIMARY_HAL_PATH)])
+' "$AUDIO_MK"
+
     fi
 
-done
-
-echo "Required audio modules verified."
-
-###############################################################################
-# VERIFY BOOT CONTROL PACKAGES
-###############################################################################
-
-section "VERIFYING BOOT CONTROL"
-
-if ! grep -q 'android.hardware.boot-service.qti' "$DEVICE_MK"; then
-    die "QTI boot service missing from device.mk."
 fi
 
-if ! grep -q 'android.hardware.boot-service.qti.recovery' "$DEVICE_MK"; then
-    die "QTI recovery boot service missing from device.mk."
+# ============================================================
+# 16. Remove MIUI Camera
+# ============================================================
+
+echo "=============================================="
+echo " Removing MIUI Camera"
+echo "=============================================="
+
+sed -i \
+    '/vendor\/xiaomi\/miuicamera-veux\/MiuiCamera-veux.mk/d' \
+    device/xiaomi/veux/device.mk
+
+sed -i \
+    '/vendor\/xiaomi\/miuicamera-veux\/SEPolicy-veux.mk/d' \
+    device/xiaomi/veux/BoardConfig.mk
+
+sed -i \
+    '/^# MiuiCamera$/d' \
+    device/xiaomi/veux/device.mk
+
+# ============================================================
+# 17. Remove Dolby
+# ============================================================
+
+echo "=============================================="
+echo " Removing Dolby"
+echo "=============================================="
+
+sed -i \
+    '/vendor\/sony\/dolby\/setup.mk/d' \
+    device/xiaomi/veux/device.mk
+
+sed -i \
+    '/^# Dolby$/d' \
+    device/xiaomi/veux/device.mk
+
+if grep -q '^AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP' \
+    device/xiaomi/veux/BoardConfig.mk
+then
+
+    sed -i \
+        's/^AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP.*/AUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP := false/' \
+        device/xiaomi/veux/BoardConfig.mk
+
+else
+
+    printf '\nAUDIO_FEATURE_ENABLED_DS2_DOLBY_DAP := false\n' \
+        >> device/xiaomi/veux/BoardConfig.mk
+
 fi
 
-if ! grep -q 'name: "android.hardware.boot-service.qti"' "$AIDL_BP"; then
-    die "QTI boot service binary missing."
+echo "Dolby DAP disabled."
+
+# ============================================================
+# 18. Remove ViPER4AndroidFX
+# ============================================================
+
+echo "=============================================="
+echo " Removing ViPER4AndroidFX"
+echo "=============================================="
+
+sed -i \
+    '/packages\/apps\/ViPER4AndroidFX\/config.mk/d' \
+    device/xiaomi/veux/device.mk
+
+sed -i \
+    '/^# Viper4AndroidFX$/d' \
+    device/xiaomi/veux/device.mk
+
+# ============================================================
+# 19. Remove RemovePackagesVeux
+# ============================================================
+
+echo "=============================================="
+echo " Removing RemovePackagesVeux"
+echo "=============================================="
+
+sed -i \
+    '/RemovePackagesVeux/d' \
+    device/xiaomi/veux/device.mk
+
+sed -i \
+    '/^# Remove unwanted packages$/d' \
+    device/xiaomi/veux/device.mk
+
+rm -rf device/xiaomi/veux/RemovePackages
+
+# ============================================================
+# 20. Keep XiaomiParts
+# ============================================================
+
+echo "=============================================="
+echo " Keeping XiaomiParts"
+echo "=============================================="
+
+if ! grep -q 'XiaomiParts' device/xiaomi/veux/device.mk; then
+
+cat >> device/xiaomi/veux/device.mk << 'EOF'
+
+# Device-specific settings
+PRODUCT_PACKAGES += \
+    XiaomiParts
+
+EOF
+
 fi
 
-if ! grep -q 'name: "android.hardware.boot-service.qti.recovery"' "$AIDL_BP"; then
-    die "QTI recovery boot service binary missing."
+if ! grep -q 'XiaomiParts' device/xiaomi/veux/device.mk; then
+    echo "ERROR: XiaomiParts could not be enabled."
+    exit 1
 fi
 
-echo "Boot control configuration verified."
+echo "XiaomiParts: PRESENT"
 
-###############################################################################
-# GMS CONFIGURATION
-###############################################################################
+# ============================================================
+# 21. GMS configuration
+# ============================================================
 
-section "ENABLING GMS"
+LINEAGE_MK="device/xiaomi/veux/lineage_veux.mk"
 
-LINEAGE_MK="$DEVICE_PATH/lineage_veux.mk"
-
-[ -f "$LINEAGE_MK" ] || die "lineage_veux.mk not found."
-
-###############################################################################
-# WITH_GMS
-###############################################################################
+if [ ! -f "$LINEAGE_MK" ]; then
+    echo "ERROR: lineage_veux.mk not found."
+    exit 1
+fi
 
 if grep -q '^WITH_GMS' "$LINEAGE_MK"; then
 
@@ -524,47 +443,57 @@ if grep -q '^WITH_GMS' "$LINEAGE_MK"; then
 
 else
 
-    cat >> "$LINEAGE_MK" <<'EOF'
+cat >> "$LINEAGE_MK" << 'EOF'
 
 WITH_GMS := true
 EOF
 
 fi
 
-###############################################################################
-# Ensure MindTheGapps is inherited
-###############################################################################
+# ============================================================
+# 22. Integrate MindTheGapps
+# ============================================================
 
-if ! grep -q 'vendor/gapps/arm64/arm64-vendor.mk' "$LINEAGE_MK"; then
+if ! grep -q \
+    'vendor/gapps/arm64/arm64-vendor.mk' \
+    "$LINEAGE_MK"
+then
 
-cat >> "$LINEAGE_MK" <<'EOF'
+cat >> "$LINEAGE_MK" << 'EOF'
 
-###############################################################################
+# ============================================================
 # MindTheGapps Android 15 ARM64
-###############################################################################
+# ============================================================
 
 $(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)
+
 EOF
 
 fi
 
-###############################################################################
-# OPTIONAL PACKAGE REMOVAL
+# ============================================================
+# 23. Remove requested optional packages
 #
-# These are explicitly requested to be removed.
+# Removed:
+#   Seedvault
+#   ThemePicker
+#   Updater
+#   QuickAccessWallet
 #
-# XiaomiParts is NOT removed.
-###############################################################################
+# XiaomiParts is intentionally NOT included here.
+# ============================================================
 
-section "CONFIGURING OPTIONAL PACKAGE REMOVALS"
+echo "=============================================="
+echo " Removing optional packages"
+echo "=============================================="
 
-if ! grep -q '# VEUX optional package removals' "$LINEAGE_MK"; then
+if ! grep -q '# VEUX requested package removals' "$LINEAGE_MK"; then
 
-cat >> "$LINEAGE_MK" <<'EOF'
+cat >> "$LINEAGE_MK" << 'EOF'
 
-###############################################################################
-# VEUX optional package removals
-###############################################################################
+# ============================================================
+# VEUX requested package removals
+# ============================================================
 
 PRODUCT_PACKAGES := $(filter-out \
     Seedvault \
@@ -577,78 +506,57 @@ EOF
 
 fi
 
-###############################################################################
-# VERIFY XIAOMIPARTS IS STILL ENABLED
-###############################################################################
+# ============================================================
+# 24. Verify requested removals
+# ============================================================
 
-section "VERIFYING XIAOMIPARTS"
-
-if grep -q 'XiaomiParts' "$DEVICE_MK"; then
-    echo "XiaomiParts: KEEP"
-else
-    die "XiaomiParts was unexpectedly removed."
-fi
-
-###############################################################################
-# VERIFY REMOVED REPOSITORIES / REFERENCES
-###############################################################################
-
-section "VERIFYING REMOVED COMPONENTS"
-
-###############################################################################
-# Device tree references
-###############################################################################
+echo "=============================================="
+echo " Final removal verification"
+echo "=============================================="
 
 BAD_REFS="$(
     grep -RInE \
         'miuicamera|MiuiCamera|vendor/sony/dolby|ViPER4AndroidFX|RemovePackagesVeux' \
-        "$DEVICE_PATH" \
+        device/xiaomi/veux \
         2>/dev/null || true
 )"
 
 if [ -n "$BAD_REFS" ]; then
-
-    echo "Found forbidden references:"
+    echo "ERROR: Forbidden references still exist:"
     echo "$BAD_REFS"
-
-    die "Removed components are still referenced."
-
+    exit 1
 fi
 
 echo "MIUI Camera references: CLEAN"
-echo "Dolby repository references: CLEAN"
+echo "Dolby references: CLEAN"
 echo "ViPER4AndroidFX references: CLEAN"
 echo "RemovePackagesVeux references: CLEAN"
 
-###############################################################################
-# Verify repositories themselves are absent
-###############################################################################
+# ============================================================
+# 25. Verify unwanted repositories are absent
+# ============================================================
 
-if [ -e "vendor/xiaomi/miuicamera-veux" ]; then
-    die "vendor/xiaomi/miuicamera-veux still exists."
-fi
+for DIR in \
+    vendor/xiaomi/miuicamera-veux \
+    vendor/xiaomi/miuicamera \
+    vendor/sony/dolby \
+    packages/apps/ViPER4AndroidFX
+do
 
-if [ -e "vendor/xiaomi/miuicamera" ]; then
-    die "vendor/xiaomi/miuicamera still exists."
-fi
+    if [ -e "$DIR" ]; then
+        echo "ERROR: unwanted repository still exists: $DIR"
+        exit 1
+    fi
 
-if [ -e "vendor/sony/dolby" ]; then
-    die "vendor/sony/dolby still exists."
-fi
+done
 
-if [ -e "packages/apps/ViPER4AndroidFX" ]; then
-    die "packages/apps/ViPER4AndroidFX still exists."
-fi
-
-echo "MIUI Camera repository: ABSENT"
+echo "MIUI Camera repositories: ABSENT"
 echo "Dolby repository: ABSENT"
 echo "ViPER4AndroidFX repository: ABSENT"
 
-###############################################################################
-# VERIFY OPTIONAL PACKAGE FILTER
-###############################################################################
-
-section "VERIFYING OPTIONAL PACKAGE FILTER"
+# ============================================================
+# 26. Verify optional package filters
+# ============================================================
 
 for PACKAGE in \
     Seedvault \
@@ -658,251 +566,331 @@ for PACKAGE in \
 do
 
     if ! grep -q "$PACKAGE" "$LINEAGE_MK"; then
-        die "$PACKAGE filter missing from lineage_veux.mk."
+        echo "ERROR: $PACKAGE removal filter is missing."
+        exit 1
     fi
 
 done
 
-echo "Seedvault filter: OK"
-echo "ThemePicker filter: OK"
-echo "Updater filter: OK"
-echo "QuickAccessWallet filter: OK"
+echo "Seedvault: FILTERED"
+echo "ThemePicker: FILTERED"
+echo "Updater: FILTERED"
+echo "QuickAccessWallet: FILTERED"
 
-###############################################################################
-# VERIFY GMS
-###############################################################################
+# ============================================================
+# 27. Verify XiaomiParts
+# ============================================================
 
-section "VERIFYING GMS CONFIGURATION"
+if ! grep -q 'XiaomiParts' device/xiaomi/veux/device.mk; then
+    echo "ERROR: XiaomiParts is missing."
+    exit 1
+fi
+
+echo "XiaomiParts: KEPT"
+
+# ============================================================
+# 28. Verify audio configuration
+# ============================================================
+
+echo "=============================================="
+echo " Final audio verification"
+echo "=============================================="
+
+if ! grep -q 'audio.primary.holi' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: audio.primary.holi missing."
+    exit 1
+fi
+
+if ! grep -q 'audio.bluetooth.default' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: audio.bluetooth.default missing."
+    exit 1
+fi
+
+if ! grep -q 'audio.r_submix.default' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: audio.r_submix.default missing."
+    exit 1
+fi
+
+if ! grep -q 'audio.usb.default' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: audio.usb.default missing."
+    exit 1
+fi
+
+if ! grep -q 'audio_tuning_mixer.txt' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: audio_tuning_mixer.txt reference missing."
+    exit 1
+fi
+
+echo "Qualcomm/Holi audio configuration: PRESENT"
+
+# ============================================================
+# 29. Verify BootControl
+# ============================================================
+
+echo "=============================================="
+echo " Final BootControl verification"
+echo "=============================================="
+
+if ! grep -q \
+    'android.hardware.boot-service.qti' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: QTI BootControl service missing."
+    exit 1
+fi
+
+if ! grep -q \
+    'android.hardware.boot-service.qti.recovery' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: QTI recovery BootControl service missing."
+    exit 1
+fi
+
+if ! grep -q \
+    'hardware/qcom-caf/bootctrl' \
+    device/xiaomi/veux/device.mk
+then
+    echo "ERROR: QTI BootControl Soong namespace missing."
+    exit 1
+fi
+
+echo "QTI BootControl configuration: PRESENT"
+
+# ============================================================
+# 30. Verify BOARD_OPENSOURCE_DIR
+# ============================================================
+
+if ! grep -q '^BOARD_OPENSOURCE_DIR *:=' \
+    device/xiaomi/veux/BoardConfig.mk
+then
+    echo "ERROR: BOARD_OPENSOURCE_DIR missing."
+    exit 1
+fi
+
+echo "BOARD_OPENSOURCE_DIR: PRESENT"
+
+# ============================================================
+# 31. Verify GMS + MindTheGapps
+# ============================================================
+
+echo "=============================================="
+echo " Final GMS verification"
+echo "=============================================="
 
 if ! grep -q '^WITH_GMS := true' "$LINEAGE_MK"; then
-    die "WITH_GMS is not enabled."
+    echo "ERROR: WITH_GMS is not enabled."
+    exit 1
 fi
 
-if ! grep -q 'vendor/gapps/arm64/arm64-vendor.mk' "$LINEAGE_MK"; then
-    die "MindTheGapps inheritance is missing."
+if ! grep -q \
+    'vendor/gapps/arm64/arm64-vendor.mk' \
+    "$LINEAGE_MK"
+then
+    echo "ERROR: MindTheGapps inheritance missing."
+    exit 1
 fi
 
-echo "WITH_GMS=true"
-echo "MindTheGapps ARM64 makefile included."
+echo "WITH_GMS: ENABLED"
+echo "MindTheGapps: ENABLED"
 
-###############################################################################
-# CHECK BOARD RESERVED SPACE
-###############################################################################
+# ============================================================
+# 32. Check GMS partition reserved sizes
+# ============================================================
 
-section "CHECKING GMS PARTITION RESERVED SPACE"
+echo "=============================================="
+echo " Checking GMS partition reserved space"
+echo "=============================================="
 
-if grep -q 'BOARD_SYSTEMIMAGE_PARTITION_RESERVED_SIZE := 25165824' "$BOARD_CONFIG"; then
+if grep -q \
+    'BOARD_SYSTEMIMAGE_PARTITION_RESERVED_SIZE := 25165824' \
+    device/xiaomi/veux/BoardConfig.mk
+then
     echo "System reserved size: 24 MiB"
 else
-    echo "WARNING: Expected 24 MiB system reserved size not found."
+    echo "WARNING: System reserved size is not 24 MiB."
 fi
 
-if grep -q 'BOARD_SYSTEM_EXTIMAGE_PARTITION_RESERVED_SIZE := 25165824' "$BOARD_CONFIG"; then
+if grep -q \
+    'BOARD_SYSTEM_EXTIMAGE_PARTITION_RESERVED_SIZE := 25165824' \
+    device/xiaomi/veux/BoardConfig.mk
+then
     echo "System_ext reserved size: 24 MiB"
 else
-    echo "WARNING: Expected 24 MiB system_ext reserved size not found."
+    echo "WARNING: System_ext reserved size is not 24 MiB."
 fi
 
-if grep -q 'BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE := 25165824' "$BOARD_CONFIG"; then
+if grep -q \
+    'BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE := 25165824' \
+    device/xiaomi/veux/BoardConfig.mk
+then
     echo "Product reserved size: 24 MiB"
 else
-    echo "WARNING: Expected 24 MiB product reserved size not found."
+    echo "WARNING: Product reserved size is not 24 MiB."
 fi
 
-###############################################################################
-# PRINT FINAL IMPORTANT SETTINGS
-###############################################################################
+# ============================================================
+# 33. Build environment
+# ============================================================
 
-section "FINAL CONFIGURATION"
+export BUILD_USERNAME=crave
+export BUILD_HOSTNAME=foss
+export BUILD_BROKEN_MISSING_REQUIRED_MODULES=true
 
-echo
+# ============================================================
+# 34. Final source verification
+# ============================================================
+
+echo "=============================================="
+echo " FINAL SOURCE CHECK"
+echo "=============================================="
+
 echo "Device:"
-echo "  Redmi Note 11 Pro+ 5G / POCO X4 Pro 5G"
-echo
-echo "Target:"
-echo "  lineage_veux"
-echo
-echo "Lineage:"
-echo "  22.1 / Android 15"
-echo
-echo "Architecture:"
-echo "  arm64"
-echo
-echo "GApps:"
-echo "  MindTheGapps 15.0.0 ARM64"
-echo "  Commit: $GAPPS_COMMIT"
-echo
-echo "Removed:"
-echo "  MIUI Camera"
-echo "  Dolby"
-echo "  ViPER4AndroidFX"
-echo "  Seedvault"
-echo "  ThemePicker"
-echo "  Updater"
-echo "  QuickAccessWallet"
-echo "  RemovePackagesVeux"
-echo
-echo "Kept:"
-echo "  XiaomiParts"
-echo "  LineageParts"
-echo "  Qualcomm audio HAL"
-echo "  Holi audio configuration"
-echo
-echo "Successful fixes:"
-echo "  QTI boot service"
-echo "  QTI recovery boot service"
-echo "  GPT Utils BSG headers"
-echo "  BOARD_OPENSOURCE_DIR"
-echo "  BUILD_BROKEN_MISSING_REQUIRED_MODULES"
-echo
+ls -ld device/xiaomi/veux
 
-###############################################################################
-# SOURCE ENVIRONMENT
-###############################################################################
+echo "Vendor:"
+ls -ld vendor/xiaomi/veux
 
-section "INITIALIZING BUILD ENVIRONMENT"
+echo "Kernel:"
+ls -ld kernel/xiaomi/veux
+
+echo "BootControl:"
+ls -ld hardware/qcom-caf/bootctrl
+
+echo "GPT Utils:"
+ls -ld hardware/qcom-caf/bootctrl/gpt-utils
+
+echo "Holi Audio:"
+ls -ld hardware/qcom-caf/sm8350/audio/configs/holi
+
+echo "MindTheGapps:"
+ls -ld vendor/gapps
+
+# ============================================================
+# 35. Start build environment
+# ============================================================
+
+echo "=============================================="
+echo " Starting build environment"
+echo "=============================================="
 
 source build/envsetup.sh
 
-###############################################################################
-# SELECT DEVICE
-###############################################################################
-
-section "SELECTING VEUX"
-
 breakfast veux
 
-###############################################################################
-# GPT PREFLIGHT
-###############################################################################
+# ============================================================
+# 36. IMPORTANT: Test GPT Utils before full ROM build
+# ============================================================
 
-section "GPT UTILS PREFLIGHT"
+echo "=============================================="
+echo " TESTING QTI GPT UTILS"
+echo "=============================================="
 
-echo
-echo "Building libgptutils.qti before the full ROM."
-echo "If this fails, the full build will stop."
+echo "Building libgptutils.qti..."
+echo "This is a small pre-flight test."
+echo "If this fails, the full ROM build will NOT start."
 
-m libgptutils.qti -j"$(nproc)"
+m libgptutils.qti -j$(nproc)
 
-echo
-echo "GPT PREFLIGHT PASSED."
+echo "=============================================="
+echo " QTI GPT UTILS TEST PASSED"
+echo "=============================================="
 
-###############################################################################
-# FULL BUILD
-###############################################################################
+# ============================================================
+# 37. Full LineageOS + MindTheGapps build
+# ============================================================
 
-section "STARTING FULL LINEAGEOS 22.1 + GAPPS BUILD"
-
-echo
-echo "This is the expensive step."
-echo "Starting mka bacon..."
-echo
+echo "=============================================="
+echo " STARTING FULL LINEAGEOS + GAPPS BUILD"
+echo "=============================================="
 
 mka bacon
 
-###############################################################################
-# BUILD OUTPUT
-###############################################################################
-
-section "COLLECTING BUILD OUTPUT"
-
-PRODUCT_OUT="out/target/product/veux"
+# ============================================================
+# 38. Collect output
+# ============================================================
 
 mkdir -p imgs_output
 
-###############################################################################
-# Copy important images
-###############################################################################
+cp out/target/product/veux/boot.img \
+    imgs_output/ 2>/dev/null || true
+
+cp out/target/product/veux/dtbo.img \
+    imgs_output/ 2>/dev/null || true
+
+cp out/target/product/veux/recovery.img \
+    imgs_output/ 2>/dev/null || true
+
+cp out/target/product/veux/vendor_boot.img \
+    imgs_output/ 2>/dev/null || true
+
+cp out/target/product/veux/vbmeta.img \
+    imgs_output/ 2>/dev/null || true
+
+cp out/target/product/veux/vbmeta_system.img \
+    imgs_output/ 2>/dev/null || true
+
+# ============================================================
+# 39. Build output
+# ============================================================
+
+echo "=============================================="
+echo " BUILD OUTPUT"
+echo "=============================================="
+
+find out/target/product/veux \
+    -maxdepth 1 \
+    -type f \
+    -name "lineage-*.zip" \
+    -print || true
+
+echo "=============================================="
+echo " ZIP FILES"
+echo "=============================================="
+
+ls -lh \
+    out/target/product/veux/*.zip \
+    2>/dev/null || true
+
+echo "=============================================="
+echo " IMAGE OUTPUT"
+echo "=============================================="
+
+ls -lh \
+    imgs_output/ \
+    2>/dev/null || true
+
+# ============================================================
+# 40. SHA256
+# ============================================================
+
+echo "=============================================="
+echo " SHA256"
+echo "=============================================="
 
 for FILE in \
-    boot.img \
-    dtbo.img \
-    vendor_boot.img \
-    recovery.img \
-    vbmeta.img \
-    vbmeta_system.img
+    out/target/product/veux/*.zip \
+    imgs_output/*.img
 do
-
-    if [ -f "$PRODUCT_OUT/$FILE" ]; then
-
-        cp -f \
-            "$PRODUCT_OUT/$FILE" \
-            "imgs_output/$FILE"
-
-        echo "Copied: $FILE"
-
-    else
-
-        echo "Not generated: $FILE"
-
-    fi
-
-done
-
-###############################################################################
-# FIND ROM ZIP
-###############################################################################
-
-ROM_ZIP=""
-
-for ZIP in "$PRODUCT_OUT"/lineage-22.1-*.zip; do
-
-    if [ -f "$ZIP" ]; then
-        ROM_ZIP="$ZIP"
-        break
-    fi
-
-done
-
-###############################################################################
-# FINAL OUTPUT
-###############################################################################
-
-section "BUILD COMPLETE"
-
-if [ -n "$ROM_ZIP" ]; then
-
-    echo
-    echo "ROM ZIP:"
-    ls -lh "$ROM_ZIP"
-
-else
-
-    echo
-    echo "WARNING: Lineage ROM ZIP was not found."
-
-fi
-
-echo
-echo "IMAGE OUTPUT:"
-ls -lh imgs_output/ 2>/dev/null || true
-
-echo
-echo "PRODUCT OUTPUT:"
-echo "$PRODUCT_OUT"
-
-###############################################################################
-# SHA256
-###############################################################################
-
-section "GENERATING SHA256 HASHES"
-
-if [ -n "$ROM_ZIP" ]; then
-    sha256sum "$ROM_ZIP"
-fi
-
-for FILE in imgs_output/*.img; do
     if [ -f "$FILE" ]; then
         sha256sum "$FILE"
     fi
 done
 
-###############################################################################
+# ============================================================
 # DONE
-###############################################################################
+# ============================================================
 
-echo
-echo "============================================================"
-echo " LINEAGEOS 22.1 + MINDTHEGAPPS BUILD FINISHED"
-echo "============================================================"
-echo
+echo "=============================================="
+echo " BUILD FINISHED"
+echo "=============================================="
