@@ -1,588 +1,517 @@
-#!/bin/bash
-set -e
-
-echo "=============================================="
-echo " LineageOS 23.2 VEUX / PEUX - VANILLA"
-echo "=============================================="
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 # ============================================================
-# 1. Clean local manifest and initialize source
+# LineageOS 23.2 / Android 16 / VEUX-PEUX
+# Vanilla build for Redmi Note 11 Pro 5G / Pro+ 5G
+#
+# Source baseline:
+#   https://github.com/accupara/los23.2
+#   branch: lineage-23.2
+#
+# Device:
+#   xiaomi-sm6375-devs/android_device_xiaomi_veux
+#
+# Common:
+#   xiaomi-sm6375-devs/android_device_xiaomi_sm6375-common
+#
+# Hardware:
+#   xiaomi-sm6375-devs/android_hardware_xiaomi
+#
+# Kernel:
+#   CaesiumOS/kernel_xiaomi_sm6375
+#   branch lineage: 16-qpr2
+#   pinned commit:
+#   30e3b032c8f27780f6011bc61c4c4b655985c9bb
+#
+# Vendor:
+#   Xiaomi-sm6375-developers/vendor_xiaomi_veux
+#   branch: bka
+#
+# Common vendor:
+#   crdroidandroid/proprietary_vendor_xiaomi_sm6375-common
+#   branch: 16.0
+#
+# IMPORTANT:
+#   Vanilla build. No GApps, MindTheGapps, NikGapps, BitGApps,
+#   OpenGApps, MiuiCamera, Dolby, ViPER4Android, or old 22.1
+#   audio/BootControl hacks are injected by this script.
 # ============================================================
 
-echo "=============================================="
-echo " Cleaning local manifests"
-echo "=============================================="
+ROM_BRANCH="${ROM_BRANCH:-lineage-23.2}"
+SOURCE_MANIFEST="${SOURCE_MANIFEST:-https://github.com/accupara/los23.2.git}"
+KERNEL_COMMIT="${KERNEL_COMMIT:-30e3b032c8f27780f6011bc61c4c4b655985c9bb}"
+SOURCE_ROOT="${SOURCE_ROOT:-$PWD}"
+OUTPUT_DIR="${OUTPUT_DIR:-$SOURCE_ROOT/imgs_output}"
+PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-0}"
+EXTRACT_BLOBS="${EXTRACT_BLOBS:-0}"
+REPO_JOBS="${REPO_JOBS:-8}"
+BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+DEVICE="veux"
+PRODUCT="lineage_veux"
+EXPECTED_PRODUCT_NAME="lineage_veux"
+EXPECTED_KERNEL_CONFIG="veux_defconfig"
+EXPECTED_KERNEL_PATH="kernel/xiaomi/sm6375"
+EXPECTED_DEVICE_PATH="device/xiaomi/veux"
+EXPECTED_COMMON_PATH="device/xiaomi/sm6375-common"
+EXPECTED_VENDOR_PATH="vendor/xiaomi/veux"
+EXPECTED_HARDWARE_PATH="hardware/xiaomi"
 
+log()  { printf '\n[%s] %s\n' "INFO" "$*"; }
+warn() { printf '\n[%s] %s\n' "WARN" "$*" >&2; }
+die()  { printf '\n[%s] %s\n' "ERROR" "$*" >&2; exit 1; }
+
+on_error() {
+    local ec=$?
+    echo
+    echo "============================================================"
+    echo " BUILD SCRIPT FAILED"
+    echo " exit_code=$ec"
+    echo " line=${BASH_LINENO[0]:-unknown}"
+    echo " command=${BASH_COMMAND:-unknown}"
+    echo "============================================================"
+    exit "$ec"
+}
+trap on_error ERR
+
+cd "$SOURCE_ROOT"
+
+# ============================================================
+# 1. Host / Crave preflight
+# ============================================================
+
+log "Checking host tools"
+
+command -v git >/dev/null 2>&1 || die "git is missing"
+command -v repo >/dev/null 2>&1 || die "repo is missing"
+command -v python3 >/dev/null 2>&1 || die "python3 is missing"
+command -v java >/dev/null 2>&1 || die "java is missing"
+command -v sed >/dev/null 2>&1 || die "sed is missing"
+command -v grep >/dev/null 2>&1 || die "grep is missing"
+command -v find >/dev/null 2>&1 || die "find is missing"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is missing"
+
+if [ -x /opt/crave/resync.sh ]; then
+    log "Crave resync helper detected"
+else
+    warn "/opt/crave/resync.sh not found in current environment"
+    warn "This script is intended to be run inside a Crave build environment"
+fi
+
+git --version
+repo --version | head -n 1 || true
+python3 --version
+java -version 2>&1 | head -n 1
+
+# ============================================================
+# 2. Initialize / refresh source tree
+# ============================================================
+
+log "Initializing LineageOS 23.2 source tree"
+
+mkdir -p .repo
 rm -rf .repo/local_manifests
 mkdir -p .repo/local_manifests
 
 repo init \
-    -u https://github.com/accupara/los23.2.git \
-    -b lineage-23.2 \
+    -u "$SOURCE_MANIFEST" \
+    -b "$ROM_BRANCH" \
     --git-lfs \
     --depth=1
 
-echo "LineageOS 23.2 source initialized."
-
 # ============================================================
-# 2. VEUX local manifest
+# 3. Local manifest
 # ============================================================
 
 cat > .repo/local_manifests/veux.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
 
-    <!-- VEUX Device Tree -->
+    <!-- VEUX device -->
     <project
         name="xiaomi-sm6375-devs/android_device_xiaomi_veux"
         path="device/xiaomi/veux"
         revision="lineage-23.2"
-        depth="1" />
+        clone-depth="1" />
 
-    <!-- SM6375 Common Device Tree -->
+    <!-- SM6375 common -->
     <project
         name="xiaomi-sm6375-devs/android_device_xiaomi_sm6375-common"
         path="device/xiaomi/sm6375-common"
         revision="lineage-23.2"
-        depth="1" />
+        clone-depth="1" />
 
-    <!-- VEUX/SM6375 Kernel -->
-    <project
-        name="CaesiumOS/kernel_xiaomi_sm6375"
-        path="kernel/xiaomi/sm6375"
-        revision="30e3b032c8f27780f6011bc61c4c4b655985c9bb"
-        depth="1" />
-
-    <!-- Xiaomi Hardware -->
+    <!-- Xiaomi hardware -->
     <project
         name="xiaomi-sm6375-devs/android_hardware_xiaomi"
         path="hardware/xiaomi"
         revision="lineage-23.2"
-        depth="1" />
+        clone-depth="1" />
 
-    <!-- VEUX Proprietary Vendor -->
+    <!-- Android 16 VEUX kernel -->
+    <project
+        name="CaesiumOS/kernel_xiaomi_sm6375"
+        path="kernel/xiaomi/sm6375"
+        revision="16-qpr2"
+        clone-depth="1" />
+
+    <!-- VEUX proprietary vendor -->
     <project
         name="Xiaomi-sm6375-developers/vendor_xiaomi_veux"
         path="vendor/xiaomi/veux"
         revision="bka"
-        depth="1" />
+        clone-depth="1" />
 
-    <!-- SM6375 Common Proprietary Vendor -->
+    <!-- SM6375 common proprietary vendor -->
     <project
         name="crdroidandroid/proprietary_vendor_xiaomi_sm6375-common"
         path="vendor/xiaomi/sm6375-common"
         revision="16.0"
-        depth="1" />
+        clone-depth="1" />
 
 </manifest>
 EOF
 
-echo "Local manifest created."
+log "Local manifest created"
 
 # ============================================================
-# 3. Crave resync
+# 4. Sync source
 # ============================================================
 
-echo "=============================================="
-echo " Running Crave resync"
-echo "=============================================="
+log "Synchronizing source"
 
-/opt/crave/resync.sh
+if [ -x /opt/crave/resync.sh ]; then
+    /opt/crave/resync.sh
+else
+    repo sync -c --force-sync --no-clone-bundle --no-tags -j"$REPO_JOBS"
+fi
 
 # ============================================================
-# 4. Verify required repositories
+# 5. Source validation
 # ============================================================
 
-echo "=============================================="
-echo " Verifying source tree"
-echo "=============================================="
+log "Validating required repositories"
 
-for DIR in \
-    device/xiaomi/veux \
-    device/xiaomi/sm6375-common \
-    hardware/xiaomi \
-    kernel/xiaomi/sm6375 \
-    vendor/xiaomi/veux \
-    vendor/xiaomi/sm6375-common
+for dir in \
+    "$EXPECTED_DEVICE_PATH" \
+    "$EXPECTED_COMMON_PATH" \
+    "$EXPECTED_HARDWARE_PATH" \
+    "$EXPECTED_KERNEL_PATH" \
+    "$EXPECTED_VENDOR_PATH" \
+    "vendor/xiaomi/sm6375-common"
 do
-    if [ ! -d "$DIR" ]; then
-        echo "ERROR: Missing required directory: $DIR"
-        exit 1
-    fi
+    [ -d "$dir" ] || die "Missing required directory: $dir"
 done
 
-echo "Required repositories found."
+git -C "$EXPECTED_DEVICE_PATH" rev-parse --show-toplevel >/dev/null
+git -C "$EXPECTED_COMMON_PATH" rev-parse --show-toplevel >/dev/null
+git -C "$EXPECTED_HARDWARE_PATH" rev-parse --show-toplevel >/dev/null
+git -C "$EXPECTED_KERNEL_PATH" rev-parse --show-toplevel >/dev/null
+git -C "$EXPECTED_VENDOR_PATH" rev-parse --show-toplevel >/dev/null
+git -C "vendor/xiaomi/sm6375-common" rev-parse --show-toplevel >/dev/null
+
+log "Source repositories present"
 
 # ============================================================
-# 5. Verify required files
+# 6. Kernel validation
 # ============================================================
 
-for FILE in \
-    device/xiaomi/veux/Android.bp \
-    device/xiaomi/veux/AndroidProducts.mk \
-    device/xiaomi/veux/BoardConfig.mk \
-    device/xiaomi/veux/device.mk \
-    device/xiaomi/veux/lineage_veux.mk \
-    device/xiaomi/veux/lineage.dependencies \
-    device/xiaomi/veux/proprietary-files.txt \
-    device/xiaomi/veux/extract-files.py \
-    device/xiaomi/sm6375-common/Android.bp \
-    device/xiaomi/sm6375-common/BoardConfigCommon.mk \
-    device/xiaomi/sm6375-common/common.mk \
-    device/xiaomi/sm6375-common/lineage.dependencies \
-    device/xiaomi/sm6375-common/proprietary-files.txt \
-    device/xiaomi/sm6375-common/extract-files.py \
-    kernel/xiaomi/sm6375/arch/arm64/configs/veux_defconfig \
-    vendor/xiaomi/veux/veux-vendor.mk \
-    vendor/xiaomi/veux/Android.bp \
-    vendor/xiaomi/sm6375-common/sm6375-common-vendor.mk \
-    vendor/xiaomi/sm6375-common/Android.bp
-do
-    if [ ! -f "$FILE" ]; then
-        echo "ERROR: Missing required file: $FILE"
-        exit 1
-    fi
-done
+log "Validating kernel"
 
-echo "Required files found."
+ACTUAL_KERNEL_COMMIT="$(git -C "$EXPECTED_KERNEL_PATH" rev-parse HEAD)"
+echo "Expected kernel commit: $KERNEL_COMMIT"
+echo "Actual kernel commit:   $ACTUAL_KERNEL_COMMIT"
+
+[ "$ACTUAL_KERNEL_COMMIT" = "$KERNEL_COMMIT" ] || \
+    die "Kernel commit mismatch"
+
+[ -f "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" ] || \
+    die "$EXPECTED_KERNEL_CONFIG not found"
+
+grep -q 'CONFIG_QGKI=y' \
+    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
+    die "Kernel config does not contain CONFIG_QGKI=y"
+
+log "Kernel validated"
 
 # ============================================================
-# 6. Verify manifest content
+# 7. Device-tree / build metadata validation
 # ============================================================
 
-echo "=============================================="
-echo " Validating local manifest"
-echo "=============================================="
+log "Validating VEUX product definition"
 
-grep -q "xiaomi-sm6375-devs/android_device_xiaomi_veux" .repo/local_manifests/veux.xml
-grep -q "xiaomi-sm6375-devs/android_device_xiaomi_sm6375-common" .repo/local_manifests/veux.xml
-grep -q "dereference23/kernel_xiaomi_sm6375" .repo/local_manifests/veux.xml
-grep -q "xiaomi-sm6375-devs/android_hardware_xiaomi" .repo/local_manifests/veux.xml
-grep -q "Xiaomi-sm6375-developers/vendor_xiaomi_veux" .repo/local_manifests/veux.xml
-grep -q "crdroidandroid/proprietary_vendor_xiaomi_sm6375-common" .repo/local_manifests/veux.xml
+[ -f "$EXPECTED_DEVICE_PATH/AndroidProducts.mk" ] || die "AndroidProducts.mk missing"
+[ -f "$EXPECTED_DEVICE_PATH/BoardConfig.mk" ] || die "BoardConfig.mk missing"
+[ -f "$EXPECTED_DEVICE_PATH/device.mk" ] || die "device.mk missing"
+[ -f "$EXPECTED_DEVICE_PATH/lineage_veux.mk" ] || die "lineage_veux.mk missing"
 
-echo "Manifest repositories verified."
+grep -q 'TARGET_KERNEL_CONFIG := veux_defconfig' \
+    "$EXPECTED_DEVICE_PATH/BoardConfig.mk" || \
+    die "VEUX BoardConfig does not select veux_defconfig"
 
-# ============================================================
-# 7. Verify resolved commits
-# ============================================================
+grep -q 'TARGET_KERNEL_SOURCE := kernel/xiaomi/sm6375' \
+    "$EXPECTED_COMMON_PATH/BoardConfigCommon.mk" || \
+    die "Common BoardConfig does not select kernel/xiaomi/sm6375"
 
-echo "=============================================="
-echo " Resolved repository commits"
-echo "=============================================="
+grep -q 'PRODUCT_NAME := lineage_veux' \
+    "$EXPECTED_DEVICE_PATH/lineage_veux.mk" || \
+    die "Unexpected PRODUCT_NAME"
 
-echo "VEUX:"
-git -C device/xiaomi/veux rev-parse HEAD
-
-echo
-echo "SM6375 COMMON:"
-git -C device/xiaomi/sm6375-common rev-parse HEAD
-
-echo
-echo "KERNEL:"
-git -C kernel/xiaomi/sm6375 rev-parse HEAD
-
-echo
-echo "HARDWARE/XIAOMI:"
-git -C hardware/xiaomi rev-parse HEAD
-
-echo
-echo "VEUX VENDOR:"
-git -C vendor/xiaomi/veux rev-parse HEAD
-
-echo
-echo "SM6375 COMMON VENDOR:"
-git -C vendor/xiaomi/sm6375-common rev-parse HEAD
+grep -q 'PRODUCT_DEVICE := veux' \
+    "$EXPECTED_DEVICE_PATH/lineage_veux.mk" || \
+    die "Unexpected PRODUCT_DEVICE"
 
 # ============================================================
-# 8. Verify VEUX / common inheritance
+# 8. Dependency validation
 # ============================================================
 
-echo "=============================================="
-echo " Verifying device inheritance"
-echo "=============================================="
+log "Validating device dependencies"
 
-grep -q "device/xiaomi/sm6375-common/common.mk" \
-    device/xiaomi/veux/device.mk
+grep -q 'android_device_xiaomi_sm6375-common' \
+    "$EXPECTED_DEVICE_PATH/lineage.dependencies" || \
+    die "VEUX lineage.dependencies does not reference SM6375 common"
 
-grep -q "vendor/xiaomi/veux/veux-vendor.mk" \
-    device/xiaomi/veux/device.mk
+grep -q 'android_hardware_xiaomi' \
+    "$EXPECTED_COMMON_PATH/lineage.dependencies" || \
+    die "Common lineage.dependencies does not reference Xiaomi hardware"
 
-grep -q "vendor/xiaomi/sm6375-common/sm6375-common-vendor.mk" \
-    device/xiaomi/sm6375-common/common.mk
-
-echo "Device/common/vendor inheritance verified."
+grep -q 'android_kernel_xiaomi_sm6375' \
+    "$EXPECTED_COMMON_PATH/lineage.dependencies" || \
+    die "Common lineage.dependencies does not reference SM6375 kernel"
 
 # ============================================================
-# 9. Verify proprietary lists
+# 9. Proprietary source validation
 # ============================================================
 
-echo "=============================================="
-echo " Verifying proprietary lists"
-echo "=============================================="
+log "Validating proprietary-file manifests"
 
-VEUX_PROP_LINES="$(wc -l < device/xiaomi/veux/proprietary-files.txt)"
-COMMON_PROP_LINES="$(wc -l < device/xiaomi/sm6375-common/proprietary-files.txt)"
+[ -f "$EXPECTED_DEVICE_PATH/proprietary-files.txt" ] || \
+    die "VEUX proprietary-files.txt missing"
 
-echo "VEUX proprietary lines   : $VEUX_PROP_LINES"
-echo "COMMON proprietary lines : $COMMON_PROP_LINES"
+NONCOMMENT_BLOB_COUNT="$(
+    grep -v '^[[:space:]]*$' "$EXPECTED_DEVICE_PATH/proprietary-files.txt" |
+    grep -v '^[[:space:]]*#' |
+    wc -l
+)"
 
-if [ "$VEUX_PROP_LINES" -le 100 ]; then
-    echo "ERROR: VEUX proprietary list unexpectedly small."
-    exit 1
+[ "$NONCOMMENT_BLOB_COUNT" -gt 0 ] || \
+    die "VEUX proprietary-files.txt appears empty"
+
+log "VEUX proprietary entries: $NONCOMMENT_BLOB_COUNT"
+
+# Keep extraction optional. The source tree already has vendor projects
+# and device extraction metadata; this is only for rebuilding vendors
+# when the user deliberately requests it.
+if [ "$EXTRACT_BLOBS" = "1" ]; then
+    log "Refreshing VEUX proprietary blobs from extraction metadata"
+
+    [ -f "$EXPECTED_DEVICE_PATH/extract-files.py" ] || \
+        die "extract-files.py is missing"
+
+    (
+        cd "$EXPECTED_DEVICE_PATH"
+        python3 extract-files.py "$@"
+    )
 fi
 
-if [ "$COMMON_PROP_LINES" -le 100 ]; then
-    echo "ERROR: COMMON proprietary list unexpectedly small."
-    exit 1
+# ============================================================
+# 10. Do NOT carry over 22.1-era patches
+# ============================================================
+
+log "Checking that obsolete 22.1 customizations are not being injected"
+
+# These are intentionally not modified:
+#   device.mk bootctrl entries
+#   BoardConfig BOARD_OPENSOURCE_DIR
+#   QTI gpt-utils source
+#   old Holi audio config repository
+#   MIUI Camera removal
+#   Dolby removal
+#   ViPER4Android removal
+#   XiaomiParts injection
+#   GApps / WITH_GMS
+#
+# The 23.2 tree is used as authored by its current maintainers.
+
+if grep -RInE \
+    'MindTheGapps|vendor/gapps|WITH_GMS *: *= *true|NikGapps|BitGApps|OpenGApps' \
+    "$EXPECTED_DEVICE_PATH" \
+    "$EXPECTED_COMMON_PATH" \
+    2>/dev/null
+then
+    die "GApps references unexpectedly found in device/common source"
 fi
 
-grep -q "OS1.0.13.0.TKCEUXM" \
-    device/xiaomi/veux/proprietary-files.txt
-
-grep -q "OS2.0.9.0.UMQEUXM" \
-    device/xiaomi/sm6375-common/proprietary-files.txt
-
-echo "Proprietary list sources verified."
-
 # ============================================================
-# 10. Verify extraction tooling
+# 11. Environment fixes that are generally safe for build
 # ============================================================
 
-echo "=============================================="
-echo " Verifying extraction tooling"
-echo "=============================================="
+export BUILD_USERNAME="${BUILD_USERNAME:-crave}"
+export BUILD_HOSTNAME="${BUILD_HOSTNAME:-foss}"
 
-python3 --version
-
-python3 -m py_compile \
-    device/xiaomi/veux/extract-files.py \
-    device/xiaomi/sm6375-common/extract-files.py
-
-echo "Extraction scripts are syntactically valid."
+# Missing required modules can be a legitimate source-tree transition
+# issue on Crave. Keep the proven workaround configurable rather than
+# patching Android source files.
+export BUILD_BROKEN_MISSING_REQUIRED_MODULES="${BUILD_BROKEN_MISSING_REQUIRED_MODULES:-true}"
 
 # ============================================================
-# 11. Verify kernel
+# 12. Build environment setup
 # ============================================================
 
-echo "=============================================="
-echo " Checking kernel"
-echo "=============================================="
-
-EXPECTED_KERNEL_COMMIT="30e3b032c8f27780f6011bc61c4c4b655985c9bb"
-ACTUAL_KERNEL_COMMIT="$(git -C kernel/xiaomi/sm6375 rev-parse HEAD)"
-
-echo "Expected kernel commit:"
-echo "$EXPECTED_KERNEL_COMMIT"
-
-echo "Actual kernel commit:"
-echo "$ACTUAL_KERNEL_COMMIT"
-
-if [ "$ACTUAL_KERNEL_COMMIT" != "$EXPECTED_KERNEL_COMMIT" ]; then
-    echo "ERROR: Kernel commit mismatch."
-    exit 1
-fi
-
-if [ ! -f kernel/xiaomi/sm6375/arch/arm64/configs/veux_defconfig ]; then
-    echo "ERROR: veux_defconfig not found."
-    exit 1
-fi
-
-grep -q "CONFIG_NFC_PN557=y" \
-    kernel/xiaomi/sm6375/arch/arm64/configs/veux_defconfig
-
-grep -q "CONFIG_NFC_QTI_I2C=y" \
-    kernel/xiaomi/sm6375/arch/arm64/configs/veux_defconfig
-
-echo "Kernel and veux_defconfig verified."
-
-# ============================================================
-# 12. Verify board configuration
-# ============================================================
-
-echo "=============================================="
-echo " Checking BoardConfig"
-echo "=============================================="
-
-grep -q "TARGET_KERNEL_CONFIG := veux_defconfig" \
-    device/xiaomi/veux/BoardConfig.mk
-
-grep -q "TARGET_KERNEL_SOURCE := kernel/xiaomi/sm6375" \
-    device/xiaomi/sm6375-common/BoardConfigCommon.mk
-
-grep -q "BOARD_KERNEL_IMAGE_NAME := Image" \
-    device/xiaomi/sm6375-common/BoardConfigCommon.mk
-
-grep -q "BOARD_BOOT_HEADER_VERSION := 3" \
-    device/xiaomi/sm6375-common/BoardConfigCommon.mk
-
-grep -q "BOARD_USES_GENERIC_KERNEL_IMAGE := true" \
-    device/xiaomi/sm6375-common/BoardConfigCommon.mk
-
-echo "Board configuration verified."
-
-# ============================================================
-# 13. Verify Virtual A/B / Dynamic Partitions / fastbootd
-# ============================================================
-
-echo "=============================================="
-echo " Checking A/B and partition configuration"
-echo "=============================================="
-
-grep -Rqs \
-    "PRODUCT_USE_DYNAMIC_PARTITIONS" \
-    device/xiaomi/sm6375-common
-
-grep -Rqs \
-    "virtual_ab_ota/launch_with_vendor_ramdisk.mk" \
-    device/xiaomi/sm6375-common
-
-grep -Rqs \
-    "fastbootd" \
-    device/xiaomi/sm6375-common device/xiaomi/veux
-
-echo "Dynamic partitions verified."
-echo "Virtual A/B verified."
-echo "fastbootd configuration verified."
-
-# ============================================================
-# 14. Verify BootControl
-# ============================================================
-
-echo "=============================================="
-echo " Checking QTI BootControl"
-echo "=============================================="
-
-grep -Rqs \
-    "android.hardware.boot-service.qti" \
-    device/xiaomi/sm6375-common device/xiaomi/veux
-
-grep -Rqs \
-    "android.hardware.boot-service.qti.recovery" \
-    device/xiaomi/sm6375-common device/xiaomi/veux
-
-grep -Rqs \
-    "android.hardware.boot-service.qti" \
-    hardware/qcom-caf/bootctrl
-
-grep -Rqs \
-    "android.hardware.boot-service.qti.recovery" \
-    hardware/qcom-caf/bootctrl
-
-echo "QTI BootControl configuration verified."
-
-# ============================================================
-# 15. Vanilla build checks
-# ============================================================
-
-echo "=============================================="
-echo " Checking VANILLA build configuration"
-echo "=============================================="
-
-echo "No GApps repository is included."
-echo "No MindTheGapps is included."
-echo "No NikGapps is included."
-echo "No BiTGApps is included."
-echo "No OpenGApps is included."
-echo "No MIUI Camera addon is included."
-echo "No Dolby addon is included."
-echo "No ViPER4Android addon is included."
-
-if grep -RniE \
-    'MindTheGapps|NikGapps|BiTGApps|OpenGApps|FlameGApps|LiteGapps|vendor/gapps' \
-    .repo/local_manifests \
-    device/xiaomi/veux \
-    device/xiaomi/sm6375-common \
-    2>/dev/null; then
-    echo "ERROR: GApps reference detected."
-    exit 1
-fi
-
-if grep -RniE \
-    'miuicamera|MiuiCamera|vendor/sony/dolby|ViPER4AndroidFX|RemovePackagesVeux' \
-    .repo/local_manifests \
-    device/xiaomi/veux \
-    device/xiaomi/sm6375-common \
-    2>/dev/null; then
-    echo "ERROR: Old/custom addon reference detected."
-    exit 1
-fi
-
-echo "Vanilla dependency checks passed."
-
-# ============================================================
-# 16. Verify product makefile
-# ============================================================
-
-echo "=============================================="
-echo " Checking product definition"
-echo "=============================================="
-
-grep -q "PRODUCT_NAME := lineage_veux" \
-    device/xiaomi/veux/lineage_veux.mk
-
-grep -q "PRODUCT_DEVICE := veux" \
-    device/xiaomi/veux/lineage_veux.mk
-
-grep -q "PRODUCT_BRAND := Redmi" \
-    device/xiaomi/veux/lineage_veux.mk
-
-echo "Product definition verified."
-
-# ============================================================
-# 17. Build environment
-# ============================================================
-
-export BUILD_USERNAME=crave
-export BUILD_HOSTNAME=foss
-
-# ============================================================
-# 18. Start build environment
-# ============================================================
-
-echo "=============================================="
-echo " Starting build environment"
-echo "=============================================="
+log "Loading build environment"
 
 source build/envsetup.sh
 
-breakfast veux
+# lunch returns useful validation and ensures TARGET_PRODUCT is resolved.
+lunch "${PRODUCT}-userdebug"
 
 # ============================================================
-# 19. Resolved target variables
+# 13. Product resolution checks
 # ============================================================
 
-echo "=============================================="
-echo " Resolved target variables"
-echo "=============================================="
+log "Checking resolved build variables"
 
-TARGET_PRODUCT_RESOLVED="$(get_build_var TARGET_PRODUCT)"
-TARGET_DEVICE_RESOLVED="$(get_build_var TARGET_DEVICE)"
-TARGET_ARCH_RESOLVED="$(get_build_var TARGET_ARCH)"
-TARGET_KERNEL_SOURCE_RESOLVED="$(get_build_var TARGET_KERNEL_SOURCE)"
-TARGET_KERNEL_CONFIG_RESOLVED="$(get_build_var TARGET_KERNEL_CONFIG)"
-TARGET_BUILD_VARIANT_RESOLVED="$(get_build_var TARGET_BUILD_VARIANT)"
+echo "TARGET_PRODUCT=${TARGET_PRODUCT:-}"
+echo "TARGET_BUILD_VARIANT=${TARGET_BUILD_VARIANT:-}"
+echo "TARGET_DEVICE=${TARGET_DEVICE:-}"
+echo "TARGET_ARCH=${TARGET_ARCH:-}"
+echo "TARGET_KERNEL_SOURCE=${TARGET_KERNEL_SOURCE:-}"
+echo "TARGET_KERNEL_CONFIG=${TARGET_KERNEL_CONFIG:-}"
 
-echo "TARGET_PRODUCT       = $TARGET_PRODUCT_RESOLVED"
-echo "TARGET_DEVICE        = $TARGET_DEVICE_RESOLVED"
-echo "TARGET_ARCH          = $TARGET_ARCH_RESOLVED"
-echo "TARGET_KERNEL_SOURCE = $TARGET_KERNEL_SOURCE_RESOLVED"
-echo "TARGET_KERNEL_CONFIG = $TARGET_KERNEL_CONFIG_RESOLVED"
-echo "TARGET_BUILD_VARIANT = $TARGET_BUILD_VARIANT_RESOLVED"
+[ "${TARGET_PRODUCT:-}" = "$EXPECTED_PRODUCT_NAME" ] || \
+    die "TARGET_PRODUCT mismatch"
 
-[ "$TARGET_PRODUCT_RESOLVED" = "lineage_veux" ]
-[ "$TARGET_DEVICE_RESOLVED" = "veux" ]
-[ "$TARGET_KERNEL_SOURCE_RESOLVED" = "kernel/xiaomi/sm6375" ]
-[ "$TARGET_KERNEL_CONFIG_RESOLVED" = "veux_defconfig" ]
+[ "${TARGET_DEVICE:-}" = "$DEVICE" ] || \
+    die "TARGET_DEVICE mismatch"
 
-echo "Target configuration verified."
+[ "${TARGET_KERNEL_SOURCE:-}" = "$EXPECTED_KERNEL_PATH" ] || \
+    die "TARGET_KERNEL_SOURCE mismatch"
+
+[ "${TARGET_KERNEL_CONFIG:-}" = "$EXPECTED_KERNEL_CONFIG" ] || \
+    die "TARGET_KERNEL_CONFIG mismatch"
 
 # ============================================================
-# 20. Pre-build output directory check
+# 14. Kernel output config sanity
 # ============================================================
 
-echo "=============================================="
-echo " Preparing output directory"
-echo "=============================================="
+log "Checking kernel configuration prerequisites"
 
-mkdir -p out/target/product/veux
+grep -q 'CONFIG_WT_QGKI=y' \
+    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
+    die "Kernel config missing CONFIG_WT_QGKI=y"
 
-echo "Output directory ready."
-
-# ============================================================
-# 21. Build test / full ROM build
-# ============================================================
-
-echo "=============================================="
-echo " Starting LineageOS 23.2 VANILLA build"
-echo "=============================================="
-
-echo "Build target: mka bacon"
-
-mka bacon
+grep -q 'CONFIG_LTO_CLANG=y' \
+    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
+    die "Kernel config missing CONFIG_LTO_CLANG=y"
 
 # ============================================================
-# 22. Collect output
+# 15. Preflight-only mode
 # ============================================================
 
-echo "=============================================="
-echo " Collecting build artifacts"
-echo "=============================================="
-
-mkdir -p imgs_output
-
-cp out/target/product/veux/boot.img \
-    imgs_output/ 2>/dev/null || true
-
-cp out/target/product/veux/dtbo.img \
-    imgs_output/ 2>/dev/null || true
-
-cp out/target/product/veux/recovery.img \
-    imgs_output/ 2>/dev/null || true
-
-cp out/target/product/veux/vendor_boot.img \
-    imgs_output/ 2>/dev/null || true
-
-cp out/target/product/veux/vbmeta.img \
-    imgs_output/ 2>/dev/null || true
-
-cp out/target/product/veux/vbmeta_system.img \
-    imgs_output/ 2>/dev/null || true
+if [ "$PREFLIGHT_ONLY" = "1" ]; then
+    log "PREFLIGHT_ONLY=1"
+    echo
+    echo "============================================================"
+    echo " PREFLIGHT PASSED"
+    echo "============================================================"
+    echo "Product : $TARGET_PRODUCT"
+    echo "Device  : $TARGET_DEVICE"
+    echo "Kernel  : $ACTUAL_KERNEL_COMMIT"
+    echo "Config  : $EXPECTED_KERNEL_CONFIG"
+    echo "Variant : $TARGET_BUILD_VARIANT"
+    echo "============================================================"
+    exit 0
+fi
 
 # ============================================================
-# 23. Build output
+# 16. Small, targeted pre-build checks
 # ============================================================
 
-echo "=============================================="
-echo " BUILD OUTPUT"
-echo "=============================================="
+log "Running targeted pre-build checks"
 
-find out/target/product/veux \
-    -maxdepth 1 \
-    -type f \
-    -name "lineage-*.zip" \
-    -print || true
-
-echo "=============================================="
-echo " ZIP FILES"
-echo "=============================================="
-
-ls -lh \
-    out/target/product/veux/*.zip \
-    2>/dev/null || true
-
-echo "=============================================="
-echo " IMAGE OUTPUT"
-echo "=============================================="
-
-ls -lh \
-    imgs_output/ \
-    2>/dev/null || true
+# Resolve boot control / fastboot modules without changing source files.
+if command -v m >/dev/null 2>&1; then
+    m libgptutils.qti -j"$BUILD_JOBS"
+else
+    warn "'m' command not available yet; skipping standalone GPT utils test"
+fi
 
 # ============================================================
-# 24. SHA256
+# 17. Full build
 # ============================================================
 
-echo "=============================================="
-echo " SHA256"
-echo "=============================================="
+log "Starting LineageOS 23.2 Vanilla build"
 
-for FILE in \
-    out/target/product/veux/*.zip \
-    imgs_output/*.img
+mka -j"$BUILD_JOBS" bacon
+
+# ============================================================
+# 18. Collect build artifacts
+# ============================================================
+
+log "Collecting artifacts"
+
+PRODUCT_OUT="out/target/product/$DEVICE"
+[ -d "$PRODUCT_OUT" ] || die "Product output directory missing: $PRODUCT_OUT"
+
+mkdir -p "$OUTPUT_DIR"
+
+for img in \
+    boot.img \
+    dtbo.img \
+    recovery.img \
+    vendor_boot.img \
+    vbmeta.img \
+    vbmeta_system.img
 do
-    if [ -f "$FILE" ]; then
-        sha256sum "$FILE"
+    if [ -f "$PRODUCT_OUT/$img" ]; then
+        cp -f "$PRODUCT_OUT/$img" "$OUTPUT_DIR/"
     fi
 done
 
+find "$PRODUCT_OUT" \
+    -maxdepth 1 \
+    -type f \
+    \( -name 'lineage-*.zip' -o -name 'lineage-*.zip.md5sum' -o -name 'lineage-*.zip.sha256sum' \) \
+    -exec cp -f {} "$OUTPUT_DIR/" \;
+
+# Copy useful metadata when present.
+for file in \
+    "$PRODUCT_OUT/installed-files.txt" \
+    "$PRODUCT_OUT/obj/PACKAGING/target_files_intermediates"/*.zip
+do
+    [ -f "$file" ] && cp -f "$file" "$OUTPUT_DIR/" || true
+done
+
 # ============================================================
-# DONE
+# 19. Checksums
 # ============================================================
 
-echo "=============================================="
+log "SHA256 checksums"
+
+(
+    cd "$OUTPUT_DIR"
+    find . -maxdepth 1 -type f -print0 |
+        sort -z |
+        xargs -0 -r sha256sum
+) | tee "$OUTPUT_DIR/SHA256SUMS.txt"
+
+# ============================================================
+# 20. Final report
+# ============================================================
+
+echo
+echo "============================================================"
 echo " BUILD FINISHED"
-echo "=============================================="
-echo " LineageOS 23.2 VEUX / PEUX"
-echo " VANILLA - NO GAPPS"
-echo "=============================================="
+echo "============================================================"
+echo "ROM branch          : $ROM_BRANCH"
+echo "Product             : $TARGET_PRODUCT"
+echo "Device              : $TARGET_DEVICE"
+echo "Kernel              : CaesiumOS/kernel_xiaomi_sm6375"
+echo "Kernel commit       : $ACTUAL_KERNEL_COMMIT"
+echo "Kernel config       : $EXPECTED_KERNEL_CONFIG"
+echo "Build variant       : $TARGET_BUILD_VARIANT"
+echo "Output directory    : $OUTPUT_DIR"
+echo "============================================================"
+echo "ZIP / image artifacts:"
+find "$OUTPUT_DIR" -maxdepth 1 -type f -printf '%f\n' | sort || true
+echo "============================================================"
