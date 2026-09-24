@@ -16,13 +16,17 @@ set -Eeuo pipefail
 #   xiaomi-sm6375-devs/android_device_xiaomi_sm6375-common
 #
 # Hardware:
-#   xiaomi-sm6375-devs/android_hardware_xiaomi
+#   LineageOS/android_hardware_xiaomi
 #
 # Kernel:
 #   CaesiumOS/kernel_xiaomi_sm6375
-#   branch lineage: 16-qpr2
+#   branch: 16-qpr2
 #   pinned commit:
 #   30e3b032c8f27780f6011bc61c4c4b655985c9bb
+#
+# BootControl:
+#   LineageOS/android_hardware_qcom_bootctrl
+#   branch: lineage-23.2-caf
 #
 # Vendor:
 #   Xiaomi-sm6375-developers/vendor_xiaomi_veux
@@ -33,36 +37,61 @@ set -Eeuo pipefail
 #   branch: 16.0
 #
 # IMPORTANT:
-#   Vanilla build. No GApps, MindTheGapps, NikGapps, BitGApps,
-#   OpenGApps, MiuiCamera, Dolby, ViPER4Android, or old 22.1
-#   audio/BootControl hacks are injected by this script.
+#   Vanilla build.
+#   No GApps / MindTheGapps / NikGapps / BitGApps / OpenGApps.
+#   No MiuiCamera / Dolby / ViPER4Android.
+#   No 22.1-era GPT/audio/source patches are injected.
 # ============================================================
 
 ROM_BRANCH="${ROM_BRANCH:-lineage-23.2}"
 SOURCE_MANIFEST="${SOURCE_MANIFEST:-https://github.com/accupara/los23.2.git}"
+
 KERNEL_COMMIT="${KERNEL_COMMIT:-30e3b032c8f27780f6011bc61c4c4b655985c9bb}"
+
 SOURCE_ROOT="${SOURCE_ROOT:-$PWD}"
 OUTPUT_DIR="${OUTPUT_DIR:-$SOURCE_ROOT/imgs_output}"
+
 PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-0}"
-EXTRACT_BLOBS="${EXTRACT_BLOBS:-0}"
+
+# none = use prebuilt vendor trees
+# adb  = extract from connected Android device
+# dump = extract from a local ROM dump
+EXTRACT_BLOBS="${EXTRACT_BLOBS:-none}"
+BLOB_SOURCE="${BLOB_SOURCE:-}"
+
 REPO_JOBS="${REPO_JOBS:-8}"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+
 DEVICE="veux"
 PRODUCT="lineage_veux"
+
 EXPECTED_PRODUCT_NAME="lineage_veux"
 EXPECTED_KERNEL_CONFIG="veux_defconfig"
+
 EXPECTED_KERNEL_PATH="kernel/xiaomi/sm6375"
 EXPECTED_DEVICE_PATH="device/xiaomi/veux"
 EXPECTED_COMMON_PATH="device/xiaomi/sm6375-common"
 EXPECTED_VENDOR_PATH="vendor/xiaomi/veux"
+EXPECTED_COMMON_VENDOR_PATH="vendor/xiaomi/sm6375-common"
 EXPECTED_HARDWARE_PATH="hardware/xiaomi"
+EXPECTED_BOOTCTRL_PATH="hardware/qcom-caf/bootctrl"
 
-log()  { printf '\n[%s] %s\n' "INFO" "$*"; }
-warn() { printf '\n[%s] %s\n' "WARN" "$*" >&2; }
-die()  { printf '\n[%s] %s\n' "ERROR" "$*" >&2; exit 1; }
+log() {
+    printf '\n[%s] %s\n' "INFO" "$*"
+}
+
+warn() {
+    printf '\n[%s] %s\n' "WARN" "$*" >&2
+}
+
+die() {
+    printf '\n[%s] %s\n' "ERROR" "$*" >&2
+    exit 1
+}
 
 on_error() {
     local ec=$?
+
     echo
     echo "============================================================"
     echo " BUILD SCRIPT FAILED"
@@ -70,8 +99,10 @@ on_error() {
     echo " line=${BASH_LINENO[0]:-unknown}"
     echo " command=${BASH_COMMAND:-unknown}"
     echo "============================================================"
+
     exit "$ec"
 }
+
 trap on_error ERR
 
 cd "$SOURCE_ROOT"
@@ -82,20 +113,25 @@ cd "$SOURCE_ROOT"
 
 log "Checking host tools"
 
-command -v git >/dev/null 2>&1 || die "git is missing"
-command -v repo >/dev/null 2>&1 || die "repo is missing"
-command -v python3 >/dev/null 2>&1 || die "python3 is missing"
-command -v java >/dev/null 2>&1 || die "java is missing"
-command -v sed >/dev/null 2>&1 || die "sed is missing"
-command -v grep >/dev/null 2>&1 || die "grep is missing"
-command -v find >/dev/null 2>&1 || die "find is missing"
-command -v sha256sum >/dev/null 2>&1 || die "sha256sum is missing"
+for command in \
+    git \
+    repo \
+    python3 \
+    java \
+    sed \
+    grep \
+    find \
+    awk \
+    sha256sum
+do
+    command -v "$command" >/dev/null 2>&1 || \
+        die "Required command not found: $command"
+done
 
 if [ -x /opt/crave/resync.sh ]; then
     log "Crave resync helper detected"
 else
-    warn "/opt/crave/resync.sh not found in current environment"
-    warn "This script is intended to be run inside a Crave build environment"
+    warn "/opt/crave/resync.sh not found; using normal repo sync"
 fi
 
 git --version
@@ -104,12 +140,13 @@ python3 --version
 java -version 2>&1 | head -n 1
 
 # ============================================================
-# 2. Initialize / refresh source tree
+# 2. Initialize LineageOS source
 # ============================================================
 
 log "Initializing LineageOS 23.2 source tree"
 
 mkdir -p .repo
+
 rm -rf .repo/local_manifests
 mkdir -p .repo/local_manifests
 
@@ -141,18 +178,29 @@ cat > .repo/local_manifests/veux.xml << 'EOF'
         revision="lineage-23.2"
         clone-depth="1" />
 
-    <!-- Xiaomi hardware -->
+    <!-- Official LineageOS Xiaomi hardware -->
     <project
-        name="xiaomi-sm6375-devs/android_hardware_xiaomi"
+        name="LineageOS/android_hardware_xiaomi"
         path="hardware/xiaomi"
         revision="lineage-23.2"
+        clone-depth="1" />
+
+    <!-- Qualcomm A/B BootControl used by the 23.2 SM6375 tree -->
+    <remove-project
+        name="LineageOS/android_hardware_qcom_bootctrl"
+        optional="true" />
+
+    <project
+        name="LineageOS/android_hardware_qcom_bootctrl"
+        path="hardware/qcom-caf/bootctrl"
+        revision="lineage-23.2-caf"
         clone-depth="1" />
 
     <!-- Android 16 VEUX kernel -->
     <project
         name="CaesiumOS/kernel_xiaomi_sm6375"
         path="kernel/xiaomi/sm6375"
-        revision="16-qpr2"
+        revision="30e3b032c8f27780f6011bc61c4c4b655985c9bb"
         clone-depth="1" />
 
     <!-- VEUX proprietary vendor -->
@@ -183,67 +231,91 @@ log "Synchronizing source"
 if [ -x /opt/crave/resync.sh ]; then
     /opt/crave/resync.sh
 else
-    repo sync -c --force-sync --no-clone-bundle --no-tags -j"$REPO_JOBS"
+    repo sync \
+        -c \
+        --force-sync \
+        --no-clone-bundle \
+        --no-tags \
+        --optimized-fetch \
+        --prune \
+        -j"$REPO_JOBS"
 fi
 
+log "Source synchronization completed"
+
 # ============================================================
-# 5. Source validation
+# 5. Validate required repositories
 # ============================================================
 
-log "Validating required repositories"
+log "Validating required source directories"
 
 for dir in \
     "$EXPECTED_DEVICE_PATH" \
     "$EXPECTED_COMMON_PATH" \
     "$EXPECTED_HARDWARE_PATH" \
+    "$EXPECTED_BOOTCTRL_PATH" \
     "$EXPECTED_KERNEL_PATH" \
     "$EXPECTED_VENDOR_PATH" \
-    "vendor/xiaomi/sm6375-common"
+    "$EXPECTED_COMMON_VENDOR_PATH" \
+    "hardware/qcom-caf/common/libqti-perfd-client" \
+    "hardware/qcom-caf/sm8350" \
+    "vendor/qcom/opensource/display"
 do
     [ -d "$dir" ] || die "Missing required directory: $dir"
 done
 
-git -C "$EXPECTED_DEVICE_PATH" rev-parse --show-toplevel >/dev/null
-git -C "$EXPECTED_COMMON_PATH" rev-parse --show-toplevel >/dev/null
-git -C "$EXPECTED_HARDWARE_PATH" rev-parse --show-toplevel >/dev/null
-git -C "$EXPECTED_KERNEL_PATH" rev-parse --show-toplevel >/dev/null
-git -C "$EXPECTED_VENDOR_PATH" rev-parse --show-toplevel >/dev/null
-git -C "vendor/xiaomi/sm6375-common" rev-parse --show-toplevel >/dev/null
+for repo_path in \
+    "$EXPECTED_DEVICE_PATH" \
+    "$EXPECTED_COMMON_PATH" \
+    "$EXPECTED_HARDWARE_PATH" \
+    "$EXPECTED_BOOTCTRL_PATH" \
+    "$EXPECTED_KERNEL_PATH" \
+    "$EXPECTED_VENDOR_PATH" \
+    "$EXPECTED_COMMON_VENDOR_PATH"
+do
+    git -C "$repo_path" rev-parse --show-toplevel >/dev/null || \
+        die "Not a valid git repository: $repo_path"
+done
 
-log "Source repositories present"
-
-# ============================================================
-# 6. Kernel validation
-# ============================================================
-
-log "Validating kernel"
-
-ACTUAL_KERNEL_COMMIT="$(git -C "$EXPECTED_KERNEL_PATH" rev-parse HEAD)"
-echo "Expected kernel commit: $KERNEL_COMMIT"
-echo "Actual kernel commit:   $ACTUAL_KERNEL_COMMIT"
-
-[ "$ACTUAL_KERNEL_COMMIT" = "$KERNEL_COMMIT" ] || \
-    die "Kernel commit mismatch"
-
-[ -f "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" ] || \
-    die "$EXPECTED_KERNEL_CONFIG not found"
-
-grep -q 'CONFIG_QGKI=y' \
-    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
-    die "Kernel config does not contain CONFIG_QGKI=y"
-
-log "Kernel validated"
+log "Required source repositories are present"
 
 # ============================================================
-# 7. Device-tree / build metadata validation
+# 6. Validate files directly referenced by the 23.2 tree
 # ============================================================
 
-log "Validating VEUX product definition"
+log "Checking required build files"
 
-[ -f "$EXPECTED_DEVICE_PATH/AndroidProducts.mk" ] || die "AndroidProducts.mk missing"
-[ -f "$EXPECTED_DEVICE_PATH/BoardConfig.mk" ] || die "BoardConfig.mk missing"
-[ -f "$EXPECTED_DEVICE_PATH/device.mk" ] || die "device.mk missing"
-[ -f "$EXPECTED_DEVICE_PATH/lineage_veux.mk" ] || die "lineage_veux.mk missing"
+for file in \
+    "$EXPECTED_DEVICE_PATH/Android.bp" \
+    "$EXPECTED_DEVICE_PATH/AndroidProducts.mk" \
+    "$EXPECTED_DEVICE_PATH/BoardConfig.mk" \
+    "$EXPECTED_DEVICE_PATH/device.mk" \
+    "$EXPECTED_DEVICE_PATH/lineage_veux.mk" \
+    "$EXPECTED_DEVICE_PATH/lineage.dependencies" \
+    "$EXPECTED_DEVICE_PATH/proprietary-files.txt" \
+    "$EXPECTED_DEVICE_PATH/extract-files.py" \
+    "$EXPECTED_COMMON_PATH/Android.bp" \
+    "$EXPECTED_COMMON_PATH/BoardConfigCommon.mk" \
+    "$EXPECTED_COMMON_PATH/common.mk" \
+    "$EXPECTED_COMMON_PATH/lineage.dependencies" \
+    "$EXPECTED_COMMON_PATH/proprietary-files.txt" \
+    "$EXPECTED_COMMON_PATH/extract-files.py" \
+    "$EXPECTED_BOOTCTRL_PATH/aidl/Android.bp" \
+    "$EXPECTED_BOOTCTRL_PATH/aidl/BootControl.cpp" \
+    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" \
+    "$EXPECTED_VENDOR_PATH/veux-vendor.mk" \
+    "$EXPECTED_COMMON_VENDOR_PATH/sm6375-common-vendor.mk" \
+    "hardware/qcom-caf/sm8350/audio/configs/holi/audio_tuning_mixer.txt" \
+    "hardware/qcom-caf/sm8350/audio/configs/holi/audio_effects.xml"
+do
+    [ -f "$file" ] || die "Missing required file: $file"
+done
+
+# ============================================================
+# 7. Device / product validation
+# ============================================================
+
+log "Validating VEUX product configuration"
 
 grep -q 'TARGET_KERNEL_CONFIG := veux_defconfig' \
     "$EXPECTED_DEVICE_PATH/BoardConfig.mk" || \
@@ -261,6 +333,10 @@ grep -q 'PRODUCT_DEVICE := veux' \
     "$EXPECTED_DEVICE_PATH/lineage_veux.mk" || \
     die "Unexpected PRODUCT_DEVICE"
 
+grep -q 'PRODUCT_USE_DYNAMIC_PARTITIONS := true' \
+    "$EXPECTED_COMMON_PATH/common.mk" || \
+    die "Dynamic partitions are not enabled in common.mk"
+
 # ============================================================
 # 8. Dependency validation
 # ============================================================
@@ -269,132 +345,35 @@ log "Validating device dependencies"
 
 grep -q 'android_device_xiaomi_sm6375-common' \
     "$EXPECTED_DEVICE_PATH/lineage.dependencies" || \
-    die "VEUX lineage.dependencies does not reference SM6375 common"
+    die "VEUX dependency on sm6375-common is missing"
 
 grep -q 'android_hardware_xiaomi' \
     "$EXPECTED_COMMON_PATH/lineage.dependencies" || \
-    die "Common lineage.dependencies does not reference Xiaomi hardware"
+    die "Common dependency on android_hardware_xiaomi is missing"
 
 grep -q 'android_kernel_xiaomi_sm6375' \
     "$EXPECTED_COMMON_PATH/lineage.dependencies" || \
-    die "Common lineage.dependencies does not reference SM6375 kernel"
+    die "Common dependency on android_kernel_xiaomi_sm6375 is missing"
 
 # ============================================================
-# 9. Proprietary source validation
+# 9. Kernel validation
 # ============================================================
 
-log "Validating proprietary-file manifests"
+log "Validating kernel source"
 
-[ -f "$EXPECTED_DEVICE_PATH/proprietary-files.txt" ] || \
-    die "VEUX proprietary-files.txt missing"
-
-NONCOMMENT_BLOB_COUNT="$(
-    grep -v '^[[:space:]]*$' "$EXPECTED_DEVICE_PATH/proprietary-files.txt" |
-    grep -v '^[[:space:]]*#' |
-    wc -l
+ACTUAL_KERNEL_COMMIT="$(
+    git -C "$EXPECTED_KERNEL_PATH" rev-parse HEAD
 )"
 
-[ "$NONCOMMENT_BLOB_COUNT" -gt 0 ] || \
-    die "VEUX proprietary-files.txt appears empty"
+echo "Expected kernel commit: $KERNEL_COMMIT"
+echo "Actual kernel commit:   $ACTUAL_KERNEL_COMMIT"
 
-log "VEUX proprietary entries: $NONCOMMENT_BLOB_COUNT"
+[ "$ACTUAL_KERNEL_COMMIT" = "$KERNEL_COMMIT" ] || \
+    die "Kernel commit mismatch"
 
-# Keep extraction optional. The source tree already has vendor projects
-# and device extraction metadata; this is only for rebuilding vendors
-# when the user deliberately requests it.
-if [ "$EXTRACT_BLOBS" = "1" ]; then
-    log "Refreshing VEUX proprietary blobs from extraction metadata"
-
-    [ -f "$EXPECTED_DEVICE_PATH/extract-files.py" ] || \
-        die "extract-files.py is missing"
-
-    (
-        cd "$EXPECTED_DEVICE_PATH"
-        python3 extract-files.py "$@"
-    )
-fi
-
-# ============================================================
-# 10. Do NOT carry over 22.1-era patches
-# ============================================================
-
-log "Checking that obsolete 22.1 customizations are not being injected"
-
-# These are intentionally not modified:
-#   device.mk bootctrl entries
-#   BoardConfig BOARD_OPENSOURCE_DIR
-#   QTI gpt-utils source
-#   old Holi audio config repository
-#   MIUI Camera removal
-#   Dolby removal
-#   ViPER4Android removal
-#   XiaomiParts injection
-#   GApps / WITH_GMS
-#
-# The 23.2 tree is used as authored by its current maintainers.
-
-if grep -RInE \
-    'MindTheGapps|vendor/gapps|WITH_GMS *: *= *true|NikGapps|BitGApps|OpenGApps' \
-    "$EXPECTED_DEVICE_PATH" \
-    "$EXPECTED_COMMON_PATH" \
-    2>/dev/null
-then
-    die "GApps references unexpectedly found in device/common source"
-fi
-
-# ============================================================
-# 11. Environment fixes that are generally safe for build
-# ============================================================
-
-export BUILD_USERNAME="${BUILD_USERNAME:-crave}"
-export BUILD_HOSTNAME="${BUILD_HOSTNAME:-foss}"
-
-# Missing required modules can be a legitimate source-tree transition
-# issue on Crave. Keep the proven workaround configurable rather than
-# patching Android source files.
-export BUILD_BROKEN_MISSING_REQUIRED_MODULES="${BUILD_BROKEN_MISSING_REQUIRED_MODULES:-true}"
-
-# ============================================================
-# 12. Build environment setup
-# ============================================================
-
-log "Loading build environment"
-
-source build/envsetup.sh
-
-# lunch returns useful validation and ensures TARGET_PRODUCT is resolved.
-lunch "${PRODUCT}-userdebug"
-
-# ============================================================
-# 13. Product resolution checks
-# ============================================================
-
-log "Checking resolved build variables"
-
-echo "TARGET_PRODUCT=${TARGET_PRODUCT:-}"
-echo "TARGET_BUILD_VARIANT=${TARGET_BUILD_VARIANT:-}"
-echo "TARGET_DEVICE=${TARGET_DEVICE:-}"
-echo "TARGET_ARCH=${TARGET_ARCH:-}"
-echo "TARGET_KERNEL_SOURCE=${TARGET_KERNEL_SOURCE:-}"
-echo "TARGET_KERNEL_CONFIG=${TARGET_KERNEL_CONFIG:-}"
-
-[ "${TARGET_PRODUCT:-}" = "$EXPECTED_PRODUCT_NAME" ] || \
-    die "TARGET_PRODUCT mismatch"
-
-[ "${TARGET_DEVICE:-}" = "$DEVICE" ] || \
-    die "TARGET_DEVICE mismatch"
-
-[ "${TARGET_KERNEL_SOURCE:-}" = "$EXPECTED_KERNEL_PATH" ] || \
-    die "TARGET_KERNEL_SOURCE mismatch"
-
-[ "${TARGET_KERNEL_CONFIG:-}" = "$EXPECTED_KERNEL_CONFIG" ] || \
-    die "TARGET_KERNEL_CONFIG mismatch"
-
-# ============================================================
-# 14. Kernel output config sanity
-# ============================================================
-
-log "Checking kernel configuration prerequisites"
+grep -q 'CONFIG_QGKI=y' \
+    "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
+    die "Kernel config missing CONFIG_QGKI=y"
 
 grep -q 'CONFIG_WT_QGKI=y' \
     "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
@@ -404,114 +383,357 @@ grep -q 'CONFIG_LTO_CLANG=y' \
     "$EXPECTED_KERNEL_PATH/arch/arm64/configs/$EXPECTED_KERNEL_CONFIG" || \
     die "Kernel config missing CONFIG_LTO_CLANG=y"
 
+log "Kernel validation passed"
+
 # ============================================================
-# 15. Preflight-only mode
+# 10. Proprietary lists / vendor validation
 # ============================================================
 
-if [ "$PREFLIGHT_ONLY" = "1" ]; then
-    log "PREFLIGHT_ONLY=1"
+log "Validating proprietary-file manifests"
+
+for list_file in \
+    "$EXPECTED_DEVICE_PATH/proprietary-files.txt" \
+    "$EXPECTED_COMMON_PATH/proprietary-files.txt"
+do
+    count="$(
+        awk '
+            !/^[[:space:]]*(#|$)/ { count++ }
+            END { print count + 0 }
+        ' "$list_file"
+    )"
+
+    [ "$count" -gt 0 ] || \
+        die "Proprietary list is empty: $list_file"
+
+    echo "$list_file: $count entries"
+done
+
+for vendor_tree in \
+    "$EXPECTED_VENDOR_PATH" \
+    "$EXPECTED_COMMON_VENDOR_PATH"
+do
+    if [ -z "$(find "$vendor_tree" -type f -print -quit)" ]; then
+        die "Vendor tree is empty: $vendor_tree"
+    fi
+
+    log "Vendor tree populated: $vendor_tree"
+done
+
+# ============================================================
+# 11. Optional proprietary blob extraction
+# ============================================================
+
+case "$EXTRACT_BLOBS" in
+    none)
+        log "Blob extraction disabled; using synced vendor repositories"
+        ;;
+
+    adb)
+        command -v adb >/dev/null 2>&1 || \
+            die "adb is required for EXTRACT_BLOBS=adb"
+
+        (
+            cd "$EXPECTED_DEVICE_PATH"
+            PYTHONPATH=../../../tools/extract-utils \
+                python3 ./extract-files.py
+        )
+
+        log "Proprietary blobs extracted from connected device"
+        ;;
+
+    dump)
+        [ -n "$BLOB_SOURCE" ] || \
+            die "BLOB_SOURCE is required for EXTRACT_BLOBS=dump"
+
+        [ -d "$BLOB_SOURCE" ] || \
+            die "BLOB_SOURCE directory does not exist: $BLOB_SOURCE"
+
+        BLOB_SOURCE="$(cd "$BLOB_SOURCE" && pwd -P)"
+
+        (
+            cd "$EXPECTED_DEVICE_PATH"
+            PYTHONPATH=../../../tools/extract-utils \
+                python3 ./extract-files.py "$BLOB_SOURCE"
+        )
+
+        log "Proprietary blobs extracted from: $BLOB_SOURCE"
+        ;;
+
+    *)
+        die "EXTRACT_BLOBS must be: none, adb, or dump"
+        ;;
+esac
+
+# ============================================================
+# 12. Do NOT inject 22.1-era modifications
+# ============================================================
+
+log "Verifying that no 22.1-era custom patches are being injected"
+
+# Intentionally NOT modifying:
+#   - hardware/qcom-caf/bootctrl source
+#   - gpt-utils source
+#   - BOARD_OPENSOURCE_DIR
+#   - old Holi audio-config repository
+#   - MIUI Camera references
+#   - Dolby
+#   - ViPER4Android
+#   - XiaomiParts
+#   - GApps / WITH_GMS
+#
+# The current 23.2 device/common trees remain authoritative.
+
+if grep -RInE \
+    'MindTheGapps|vendor/gapps|NikGapps|BitGApps|OpenGApps|WITH_GMS[[:space:]]*:?[[:space:]]*=[[:space:]]*true' \
+    "$EXPECTED_DEVICE_PATH" \
+    "$EXPECTED_COMMON_PATH" \
+    2>/dev/null
+then
+    die "Unexpected GApps configuration found in device/common source"
+fi
+
+# ============================================================
+# 13. Build environment
+# ============================================================
+
+export BUILD_USERNAME="${BUILD_USERNAME:-crave}"
+export BUILD_HOSTNAME="${BUILD_HOSTNAME:-foss}"
+
+# Retained as a configurable Crave compatibility variable.
+export BUILD_BROKEN_MISSING_REQUIRED_MODULES="${BUILD_BROKEN_MISSING_REQUIRED_MODULES:-true}"
+
+# ============================================================
+# 14. Build environment setup
+# ============================================================
+
+log "Loading Android build environment"
+
+# Android build scripts are not always nounset-safe.
+set +u
+source build/envsetup.sh
+lunch "${PRODUCT}-userdebug"
+set -u
+
+# ============================================================
+# 15. Resolve and validate final build configuration
+# ============================================================
+
+log "Resolving final product configuration"
+
+TARGET_PRODUCT_RESOLVED="$(get_build_var TARGET_PRODUCT)"
+TARGET_BUILD_VARIANT_RESOLVED="$(get_build_var TARGET_BUILD_VARIANT)"
+TARGET_DEVICE_RESOLVED="$(get_build_var TARGET_DEVICE)"
+TARGET_ARCH_RESOLVED="$(get_build_var TARGET_ARCH)"
+TARGET_KERNEL_SOURCE_RESOLVED="$(get_build_var TARGET_KERNEL_SOURCE)"
+TARGET_KERNEL_CONFIG_RESOLVED="$(get_build_var TARGET_KERNEL_CONFIG)"
+PRODUCT_OUT="$(get_build_var PRODUCT_OUT)"
+DYNAMIC_PARTITIONS_RESOLVED="$(get_build_var PRODUCT_USE_DYNAMIC_PARTITIONS)"
+PRODUCT_PACKAGES_RESOLVED="$(get_build_var PRODUCT_PACKAGES)"
+
+echo
+echo "Resolved configuration:"
+echo "  TARGET_PRODUCT       = $TARGET_PRODUCT_RESOLVED"
+echo "  TARGET_BUILD_VARIANT = $TARGET_BUILD_VARIANT_RESOLVED"
+echo "  TARGET_DEVICE        = $TARGET_DEVICE_RESOLVED"
+echo "  TARGET_ARCH          = $TARGET_ARCH_RESOLVED"
+echo "  TARGET_KERNEL_SOURCE = $TARGET_KERNEL_SOURCE_RESOLVED"
+echo "  TARGET_KERNEL_CONFIG = $TARGET_KERNEL_CONFIG_RESOLVED"
+echo "  PRODUCT_OUT          = $PRODUCT_OUT"
+echo "  DYNAMIC_PARTITIONS   = $DYNAMIC_PARTITIONS_RESOLVED"
+echo
+
+[ "$TARGET_PRODUCT_RESOLVED" = "$EXPECTED_PRODUCT_NAME" ] || \
+    die "Unexpected TARGET_PRODUCT: $TARGET_PRODUCT_RESOLVED"
+
+[ "$TARGET_DEVICE_RESOLVED" = "$DEVICE" ] || \
+    die "Unexpected TARGET_DEVICE: $TARGET_DEVICE_RESOLVED"
+
+[ "$TARGET_ARCH_RESOLVED" = "arm64" ] || \
+    die "Unexpected TARGET_ARCH: $TARGET_ARCH_RESOLVED"
+
+[ "$TARGET_KERNEL_SOURCE_RESOLVED" = "$EXPECTED_KERNEL_PATH" ] || \
+    die "Unexpected kernel source: $TARGET_KERNEL_SOURCE_RESOLVED"
+
+[[ "$TARGET_KERNEL_CONFIG_RESOLVED" == *"$EXPECTED_KERNEL_CONFIG"* ]] || \
+    die "veux_defconfig was not resolved"
+
+[ "$DYNAMIC_PARTITIONS_RESOLVED" = "true" ] || \
+    die "Dynamic partitions were not enabled"
+
+[ -n "$PRODUCT_OUT" ] || \
+    die "PRODUCT_OUT is empty"
+
+# ============================================================
+# 16. Verify packages directly required by the 23.2 tree
+# ============================================================
+
+has_package() {
+    local wanted="$1"
+
+    awk -v wanted="$wanted" '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i == wanted) {
+                    found = 1
+                }
+            }
+        }
+        END {
+            exit(found ? 0 : 1)
+        }
+    ' <<< "$PRODUCT_PACKAGES_RESOLVED"
+}
+
+for package in \
+    android.hardware.boot-service.qti \
+    android.hardware.boot-service.qti.recovery \
+    fastbootd
+do
+    has_package "$package" || \
+        die "Required resolved package missing: $package"
+done
+
+log "Required BootControl / fastbootd packages resolved"
+
+# ============================================================
+# 17. Preflight-only mode
+# ============================================================
+
+if [ "$PREFLIGHT_ONLY" = "1" ] || [ "$PREFLIGHT_ONLY" = "true" ]; then
+
     echo
     echo "============================================================"
     echo " PREFLIGHT PASSED"
     echo "============================================================"
-    echo "Product : $TARGET_PRODUCT"
-    echo "Device  : $TARGET_DEVICE"
+    echo "Product : $TARGET_PRODUCT_RESOLVED"
+    echo "Device  : $TARGET_DEVICE_RESOLVED"
+    echo "Arch    : $TARGET_ARCH_RESOLVED"
     echo "Kernel  : $ACTUAL_KERNEL_COMMIT"
-    echo "Config  : $EXPECTED_KERNEL_CONFIG"
-    echo "Variant : $TARGET_BUILD_VARIANT"
+    echo "Config  : $TARGET_KERNEL_CONFIG_RESOLVED"
+    echo "Variant : $TARGET_BUILD_VARIANT_RESOLVED"
+    echo "Output  : $PRODUCT_OUT"
     echo "============================================================"
+
     exit 0
 fi
 
 # ============================================================
-# 16. Small, targeted pre-build checks
+# 18. Targeted QTI BootControl pre-build test
 # ============================================================
 
-log "Running targeted pre-build checks"
+log "Testing libgptutils.qti before the full ROM build"
 
-# Resolve boot control / fastboot modules without changing source files.
-if command -v m >/dev/null 2>&1; then
-    m libgptutils.qti -j"$BUILD_JOBS"
-else
-    warn "'m' command not available yet; skipping standalone GPT utils test"
-fi
+m libgptutils.qti -j"$BUILD_JOBS"
+
+log "libgptutils.qti pre-build test passed"
 
 # ============================================================
-# 17. Full build
+# 19. Full LineageOS 23.2 Vanilla build
 # ============================================================
 
 log "Starting LineageOS 23.2 Vanilla build"
 
+echo "Running:"
+echo "  mka -j$BUILD_JOBS bacon"
+echo
+
 mka -j"$BUILD_JOBS" bacon
 
 # ============================================================
-# 18. Collect build artifacts
+# 20. Collect artifacts
 # ============================================================
 
-log "Collecting artifacts"
+log "Collecting build artifacts"
 
-PRODUCT_OUT="out/target/product/$DEVICE"
-[ -d "$PRODUCT_OUT" ] || die "Product output directory missing: $PRODUCT_OUT"
+[ -d "$PRODUCT_OUT" ] || \
+    die "Product output directory missing: $PRODUCT_OUT"
 
 mkdir -p "$OUTPUT_DIR"
 
-for img in \
+shopt -s nullglob
+
+ZIP_ARTIFACTS=(
+    "$PRODUCT_OUT"/lineage-*.zip
+)
+
+if (( ${#ZIP_ARTIFACTS[@]} == 0 )); then
+    shopt -u nullglob
+    die "Build completed but no LineageOS ZIP was found in $PRODUCT_OUT"
+fi
+
+cp -f -- "${ZIP_ARTIFACTS[@]}" "$OUTPUT_DIR/"
+
+for checksum_file in \
+    "$PRODUCT_OUT"/lineage-*.zip.md5sum \
+    "$PRODUCT_OUT"/lineage-*.zip.sha256sum
+do
+    [ -f "$checksum_file" ] && \
+        cp -f "$checksum_file" "$OUTPUT_DIR/" || true
+done
+
+for image in \
     boot.img \
     dtbo.img \
     recovery.img \
+    super.img \
     vendor_boot.img \
     vbmeta.img \
     vbmeta_system.img
 do
-    if [ -f "$PRODUCT_OUT/$img" ]; then
-        cp -f "$PRODUCT_OUT/$img" "$OUTPUT_DIR/"
+    if [ -f "$PRODUCT_OUT/$image" ]; then
+        cp -f "$PRODUCT_OUT/$image" "$OUTPUT_DIR/"
     fi
 done
 
-find "$PRODUCT_OUT" \
-    -maxdepth 1 \
-    -type f \
-    \( -name 'lineage-*.zip' -o -name 'lineage-*.zip.md5sum' -o -name 'lineage-*.zip.sha256sum' \) \
-    -exec cp -f {} "$OUTPUT_DIR/" \;
+shopt -u nullglob
 
-# Copy useful metadata when present.
+# Useful build metadata.
 for file in \
-    "$PRODUCT_OUT/installed-files.txt" \
-    "$PRODUCT_OUT/obj/PACKAGING/target_files_intermediates"/*.zip
+    "$PRODUCT_OUT/installed-files.txt"
 do
-    [ -f "$file" ] && cp -f "$file" "$OUTPUT_DIR/" || true
+    [ -f "$file" ] && \
+        cp -f "$file" "$OUTPUT_DIR/" || true
 done
 
 # ============================================================
-# 19. Checksums
+# 21. SHA256 checksums
 # ============================================================
 
-log "SHA256 checksums"
+log "Generating SHA256 checksums"
 
 (
     cd "$OUTPUT_DIR"
-    find . -maxdepth 1 -type f -print0 |
+
+    find . \
+        -maxdepth 1 \
+        -type f \
+        ! -name 'SHA256SUMS.txt' \
+        -print0 |
         sort -z |
         xargs -0 -r sha256sum
 ) | tee "$OUTPUT_DIR/SHA256SUMS.txt"
 
 # ============================================================
-# 20. Final report
+# 22. Final report
 # ============================================================
 
 echo
 echo "============================================================"
-echo " BUILD FINISHED"
+echo " BUILD FINISHED SUCCESSFULLY"
 echo "============================================================"
 echo "ROM branch          : $ROM_BRANCH"
-echo "Product             : $TARGET_PRODUCT"
-echo "Device              : $TARGET_DEVICE"
+echo "Product             : $TARGET_PRODUCT_RESOLVED"
+echo "Device              : $TARGET_DEVICE_RESOLVED"
+echo "Build variant       : $TARGET_BUILD_VARIANT_RESOLVED"
 echo "Kernel              : CaesiumOS/kernel_xiaomi_sm6375"
 echo "Kernel commit       : $ACTUAL_KERNEL_COMMIT"
 echo "Kernel config       : $EXPECTED_KERNEL_CONFIG"
-echo "Build variant       : $TARGET_BUILD_VARIANT"
 echo "Output directory    : $OUTPUT_DIR"
 echo "============================================================"
-echo "ZIP / image artifacts:"
-find "$OUTPUT_DIR" -maxdepth 1 -type f -printf '%f\n' | sort || true
+echo "Artifacts:"
+find "$OUTPUT_DIR" \
+    -maxdepth 1 \
+    -type f \
+    -printf '  %f\n' |
+    sort
 echo "============================================================"
